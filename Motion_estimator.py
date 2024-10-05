@@ -49,7 +49,5 @@ def Image_depth(image : np.array, depth_model, intrinsic):
 
   # Transform to np.array
   depth_map = pred_depth.squeeze().cpu().numpy()
-  
-  assert type(depth_map) is np.array, 'Output type error in Image_depth'
-  
+    
   return depth_map
