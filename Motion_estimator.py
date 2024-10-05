@@ -40,7 +40,7 @@ def Image_depth(image : np.array, depth_model, intrinsic):
   pred_depth = pred_depth[pad_info[0] : pred_depth.shape[0] - pad_info[1], pad_info[2] : pred_depth.shape[1] - pad_info[3]]
   
   # upsample to original size
-  pred_depth = torch.nn.functional.interpolate(pred_depth[None, None, :, :], image.shape[:2], mode='bilinear').squeeze()
+  pred_depth = torch.nn.functional.interpolate(pred_depth[None, None, :, :], (h,w), mode='bilinear').squeeze()
   
   # de-canonical transform
   canonical_to_real_scale = new_intrinsic[0] / 1000.0 # 1000.0 is the focal length of canonical camera
