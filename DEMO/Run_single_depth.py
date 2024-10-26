@@ -5,6 +5,8 @@ import mmcv
 import mmengine
 import matplotlib.pyplot as plt
 import numpy as np
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Motion_estimator import Image_depth
 
 model = torch.hub.load('yvanyin/metric3d', 'metric3d_vit_small', pretrain=True)
@@ -12,34 +14,47 @@ model.cuda().eval()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Define device
 model.to(device) # Move model to device
 
-image_file = 'Single_depth_demo/0000000005_rgb.png'
+image_file = 'DEMO/Single_depth_demo/0000000006_rgb.png'
 image = cv2.imread(image_file)[:, :, ::-1]
 
-depth_file = 'Single_depth_demo/0000000005_gt.png'
+depth_file = 'DEMO/Single_depth_demo/0000000006_gt.png'
 gt_depth_scale  = 256.0
 gt_depth = cv2.imread(depth_file, -1)
 gt_depth = gt_depth/gt_depth_scale
 mask = (gt_depth > 1e-8)
 
-pred_depth = Image_depth(image, model, [707.0493, 707.0493, 604.0814, 180.5066])
+# [721.5, 721.5, 609.6, 172.9] for 0000000005_rgb.png
+pred_depth = Image_depth(image, model, [721.5, 721.5, 609.6, 172.9])
 
 pred_depth = np.where(mask, pred_depth, 0)
 
+# Define color limits for consistent color mapping
+vmin = min(pred_depth.min(), gt_depth.min())
+vmax = max(pred_depth.max(), gt_depth.max())
+
+plt.figure(figsize=(10, 15))
+
+# Plot the original image
 plt.subplot(3, 1, 1)
 plt.imshow(image)
 plt.axis('off')
 
+# Plot the predicted depth
 plt.subplot(3, 1, 2)
-plt.imshow(pred_depth, cmap='viridis')  # You can try 'plasma', 'inferno', etc.
-plt.colorbar(label='Predicted Depth')  # Show original depth values on colorbar
-plt.axis('off')  # Optional: Hide axis
+pred_img = plt.imshow(pred_depth, cmap='viridis', vmin=vmin, vmax=vmax)
+plt.axis('off')
 
+# Plot the ground truth depth
 plt.subplot(3, 1, 3)
-plt.imshow(gt_depth, cmap='viridis')  # You can try 'plasma', 'inferno', etc.
-plt.colorbar(label='Estimated Depth')  # Show original depth values on colorbar
-plt.axis('off')  # Optional: Hide axis
+gt_img = plt.imshow(gt_depth, cmap='viridis', vmin=vmin, vmax=vmax)
+plt.axis('off')
 
-plt.savefig('Single_depth_demo/comparison.png')
+# Create a single colorbar that applies to both depth images
+cbar = plt.colorbar(pred_img, ax=plt.gcf().axes[1:], orientation='vertical', fraction=0.02, pad=0.04)
+cbar.set_label('Depth Value')  # Set the colorbar label
+
+# Save and show the plot
+plt.savefig('DEMO/Single_depth_demo/comparison.png')
 plt.show()
 
 '''
