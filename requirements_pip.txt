@@ -5,3 +5,7 @@ tensorboardX
 imgaug
 iopath
 imagecorruptions
+wget
+ultralytics
+deep_sort_realtime
+opencv-python-headless

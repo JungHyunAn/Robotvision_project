@@ -52,11 +52,51 @@ def Image_depth(image : np.array, depth_model, intrinsic):
     
   return depth_map
 
-def Sequence_bounding_box(image_sequence : np.array):
-  # box_list_sequence format: [[[Class_ID, Instance_ID, left_x, up_y, right_x, down_y], ... for frame1], [~~ for frame2], ...]
-  box_list_sequence = [] 
+def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequence_length=0):
+    # Initialize list to hold detections and tracking results
+    box_list_sequence = []
 
-  return box_list_sequence
+    # Determine the sequence length
+    num_frames = sequence_length if sequence_length > 0 else len(image_sequence)
+
+    for i in range(num_frames):
+        img = image_sequence[i]
+        
+        # Perform object detection using YOLO model
+        results = YOLO_model(img)
+        detections = results[0].boxes  # Extract bounding boxes from YOLO
+
+        # List to hold detection boxes for the current frame
+        boxes = []
+        for det in detections:
+            x1, y1, x2, y2 = det.xyxy[0].cpu().numpy()
+            conf = det.conf.cpu().item()
+            cls = int(det.cls.cpu().item())
+            w = x2 - x1
+            h = y2 - y1
+            boxes.append([[x1, y1, w, h], conf, cls])
+
+        # Update tracker only if there are detections in the frame
+        frame_boxes = []
+        if boxes:
+            track_objects = tracker.update_tracks(boxes, frame=img)
+
+            # Store confirmed tracks with box data in the specified format
+            for track in track_objects:
+                if not track.is_confirmed() or track.time_since_update > 1:
+                    continue
+                track_id = track.track_id
+                bbox = track.to_ltrb()
+                x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+
+                # Append [Class_ID, Instance_ID, left_x, up_y, right_x, down_y]
+                frame_boxes.append([cls, track_id, x1, y1, x2, y2])
+
+        # Append detections for the current frame to the sequence list
+        box_list_sequence.append(frame_boxes)
+
+    return box_list_sequence
+
 
 def Construct_initial_guess(image, box_list, depth_map):
   # box_list format: [[Class_ID, Instance_ID, left_x, up_y, right_x, down_y], ... for frame]
