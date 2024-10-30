@@ -99,28 +99,31 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
 
 
 def Construct_initial_guess(image, box_list, depth_map):
-  # box_list format: [[Class_ID, Instance_ID, left_x, up_y, right_x, down_y], ... for frame]
+    # box_list format: [[Class_ID, Instance_ID, left_x, up_y, right_x, down_y], ... for frame]
 
-  # initial_guess format: [[[r, g, b, class_ID, instance_ID, depth] for each pixel]]
-  initial_guess = np.concatenate((image, np.zeros_like(image[:, :, 0:2])), axis=2)
-  initial_guess = np.concatenate((initial_guess, depth_map), axis=2)
+    # Expand depth_map to 3 dimensions to match image dimensions
+    depth_map_expanded = depth_map[:, :, np.newaxis]  # Add a new axis for depth
 
-  # First calculate approximate depth for each Class_ID
-  instance_depth = {}
-  for class_id, instance_id, left_x, up_y, right_x, down_y in box_list:
-    left_x = max(0, left_x)
-    right_x = min(depth_map.shape[1] - 1, right_x)
-    up_y = max(0, up_y)
-    down_y = min(depth_map.shape[0] - 1, down_y)
+    # Expand image to have extra channels for class_ID and instance_ID
+    initial_guess = np.concatenate((image, np.zeros_like(image[:, :, :2])), axis=2)
+    initial_guess = np.concatenate((initial_guess, depth_map_expanded), axis=2)
 
-    avg_depth = np.mean(depth_map[up_y:down_y+1, left_x:right_x+1])
-    instance_depth[instance_id] = (avg_depth, class_id, left_x, up_y, right_x, down_y)
+    # Dictionary to store each instance's depth and coordinates
+    instance_depth = {}
+    for class_id, instance_id, left_x, up_y, right_x, down_y in box_list:
+        left_x = max(0, left_x)
+        right_x = min(depth_map.shape[1] - 1, right_x)
+        up_y = max(0, up_y)
+        down_y = min(depth_map.shape[0] - 1, down_y)
+
+        avg_depth = np.mean(depth_map[up_y:down_y+1, left_x:right_x+1])
+        instance_depth[instance_id] = (avg_depth, class_id, left_x, up_y, right_x, down_y)
   
-  # Give pixels ID from furthest
-  sorted_keys = sorted(instance_depth, key=lambda k: instance_depth[k][0], reverse=True)
-  for instance_id in sorted_keys:
-    _, class_id, left_x, up_y, right_x, down_y = instance_depth[instance_id]
-    initial_guess[up_y:down_y+1, left_x:right_x+1, 3] = class_id
-    initial_guess[up_y:down_y+1, left_x:right_x+1, 4] = instance_id
+    # Sort instances by depth and assign class and instance IDs
+    sorted_keys = sorted(instance_depth, key=lambda k: instance_depth[k][0], reverse=True)
+    for instance_id in sorted_keys:
+        _, class_id, left_x, up_y, right_x, down_y = instance_depth[instance_id]
+        initial_guess[up_y:down_y+1, left_x:right_x+1, 3] = class_id
+        initial_guess[up_y:down_y+1, left_x:right_x+1, 4] = instance_id
   
-  return initial_guess
+    return initial_guess # (R, G, B, class_id, instance_id, depth)
