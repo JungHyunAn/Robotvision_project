@@ -1,0 +1,5 @@
+Raw_Path,MOTS_Path,Depth_Path,Start_index,Last_index,Fx,Fy,cx,cy
+raw_data\2011_09_26\2011_09_26_drive_0005_sync\image_02\data,MOTS_instances\instances\0000,data_depth_annotated/val\2011_09_26_drive_0005_sync\proj_depth\groundtruth\image_02,5,148,7.215377e+02,7.215377e+02,6.095593e+02,1.728540e+02
+raw_data\2011_09_26\2011_09_26_drive_0013_sync\image_02\data,MOTS_instances\instances\0003,data_depth_annotated/val\2011_09_26_drive_0013_sync\proj_depth\groundtruth\image_02,5,138,7.215377e+02,7.215377e+02,6.095593e+02,1.728540e+02
+raw_data\2011_09_26\2011_09_26_drive_0036_sync\image_02\data,MOTS_instances\instances\0009,data_depth_annotated/val\2011_09_26_drive_0036_sync\proj_depth\groundtruth\image_02,5,797,7.215377e+02,7.215377e+02,6.095593e+02,1.728540e+02
+raw_data\2011_10_03\2011_10_03_drive_0047_sync\image_02\data,MOTS_instances\instances\0020,data_depth_annotated/val\2011_10_03_drive_0047_sync\proj_depth\groundtruth\image_02,5,831,7.188560e+02,7.188560e+02,6.071928e+02,1.852157e+02
