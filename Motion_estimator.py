@@ -98,14 +98,15 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
     return box_list_sequence
 
 
-def Construct_initial_guess(image, box_list, depth_map):
+def Construct_initial_guess(image : np.array, box_list, depth_map):
     # box_list format: [[Class_ID, Instance_ID, left_x, up_y, right_x, down_y], ... for frame]
 
     # Expand depth_map to 3 dimensions to match image dimensions
     depth_map_expanded = depth_map[:, :, np.newaxis]  # Add a new axis for depth
 
     # Expand image to have extra channels for class_ID and instance_ID
-    initial_guess = np.concatenate((image, np.zeros_like(image[:, :, :2])), axis=2)
+    grayscale_image = np.dot(image[..., :3], [0.2989, 0.5870, 0.1140])
+    initial_guess = np.concatenate((grayscale_image[:, :, np.newaxis] , np.zeros_like(image[:, :, :2])), axis=2)
     initial_guess = np.concatenate((initial_guess, depth_map_expanded), axis=2)
 
     # Dictionary to store each instance's depth and coordinates
@@ -123,7 +124,11 @@ def Construct_initial_guess(image, box_list, depth_map):
     sorted_keys = sorted(instance_depth, key=lambda k: instance_depth[k][0], reverse=True)
     for instance_id in sorted_keys:
         _, class_id, left_x, up_y, right_x, down_y = instance_depth[instance_id]
-        initial_guess[up_y:down_y+1, left_x:right_x+1, 3] = class_id
-        initial_guess[up_y:down_y+1, left_x:right_x+1, 4] = instance_id
+        initial_guess[up_y:down_y+1, left_x:right_x+1, 1] = class_id
+        initial_guess[up_y:down_y+1, left_x:right_x+1, 2] = instance_id
   
-    return initial_guess # (R, G, B, class_id, instance_id, depth)
+    return initial_guess # (Gray, class_id, instance_id, depth)
+
+
+def Preprocess_gt(box_list, MOTS_gt_list):
+    

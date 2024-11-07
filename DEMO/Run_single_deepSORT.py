@@ -42,10 +42,11 @@ def Combine_Tracker_image(image, box_list):
 
 def Visualize_guess(initial_guess):
     # Split initial_guess into separate components
-    rgb_image = initial_guess[:, :, :3].astype(np.uint8)  # RGB channels
-    class_id_image = initial_guess[:, :, 3]  # Class IDs
-    instance_id_image = initial_guess[:, :, 4]  # Instance IDs
-    depth_image = initial_guess[:, :, 5]  # Depth channel
+    gray_image = initial_guess[:, :, 0].astype(np.uint8)  # Gray channels
+    rgb_image = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2RGB)
+    class_id_image = initial_guess[:, :, 1]  # Class IDs
+    instance_id_image = initial_guess[:, :, 2]  # Instance IDs
+    depth_image = initial_guess[:, :, 3]  # Depth channel
 
     # Create Class ID visualization with random colors
     unique_classes = np.unique(class_id_image)
@@ -94,7 +95,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # 모델을 장치에 할당
 model.to(device)
 # DeepSORT 초기화 (트래킹)
-tracker = DeepSort(max_age=30, n_init=3, nn_budget=200)
+tracker = DeepSort(max_age=30, n_init=0, nn_budget=200)
 
 depth_model = torch.hub.load('yvanyin/metric3d', 'metric3d_vit_small', pretrain=True)
 depth_model.cuda().eval()
@@ -125,11 +126,11 @@ for i in range(446):
 
 for i in range(446):
     if i < 10:
-        guessed_path = 'DEMO/Sequence_demo/0001_rgb_initial_guess/00000' + str(i) + '.png'
+        guessed_path = 'DEMO/Combined_sequence_demo/0001_rgb_initial_guess/00000' + str(i) + '.png'
     elif i < 100:
-        guessed_path = 'DEMO/Sequence_demo/0001_rgb_initial_guess/0000' + str(i) + '.png'
+        guessed_path = 'DEMO/Combined_sequence_demo/0001_rgb_initial_guess/0000' + str(i) + '.png'
     else:
-        guessed_path = 'DEMO/Sequence_demo/0001_rgb_initial_guess/000' + str(i) + '.png'
+        guessed_path = 'DEMO/Combined_sequence_demo/0001_rgb_initial_guess/000' + str(i) + '.png'
     pred_depth = Image_depth(image_sequence[i], depth_model, [721.5, 721.5, 609.6, 172.9])
     initial_guess = Visualize_guess(Construct_initial_guess(image_sequence[i], box_list_sequence[i], pred_depth))[4]
     cv2.imwrite(guessed_path, initial_guess)
