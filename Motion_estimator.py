@@ -59,6 +59,10 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
     # Determine the sequence length
     num_frames = sequence_length if sequence_length > 0 else len(image_sequence)
 
+    # Reassign tracking IDs sequentially
+    track_id_mapping = {}
+    next_track_id = 1
+
     for i in range(num_frames):
         img = image_sequence[i]
         
@@ -85,7 +89,13 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
             for track in track_objects:
                 if not track.is_confirmed() or track.time_since_update > 1:
                     continue
-                track_id = track.track_id
+                original_track_id = track.track_id
+                # Assign Seqeuntial ID
+                if original_track_id not in track_id_mapping:
+                    track_id_mapping[original_track_id] = next_track_id
+                    next_track_id += 1
+                track_id = track_id_mapping[original_track_id]
+
                 bbox = track.to_ltrb()
                 x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
 
