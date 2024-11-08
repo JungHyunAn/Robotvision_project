@@ -139,6 +139,58 @@ def Construct_initial_guess(image : np.array, box_list, depth_map):
   
     return initial_guess # (Gray, class_id, instance_id, depth)
 
+def calculate_iou(box1, box2):
+    x1, y1, w1, h1 = box1
+    x2, y2, w2, h2 = box2
+    
+    # Box1과 Box2의 좌표 계산
+    x1_min, y1_min = x1, y1
+    x1_max, y1_max = x1 + w1, y1 + h1
+    x2_min, y2_min = x2, y2
+    x2_max, y2_max = x2 + w2, y2 + h2
+
+    # 교차 영역 계산
+    inter_x1 = max(x1_min, x2_min)
+    inter_y1 = max(y1_min, y2_min)
+    inter_x2 = min(x1_max, x2_max)
+    inter_y2 = min(y1_max, y2_max)
+    inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
+
+    # 각 box의 면적
+    box1_area = w1 * h1
+    box2_area = w2 * h2
+
+    # IoU 계산
+    iou = inter_area / float(box1_area + box2_area - inter_area)
+    return iou
 
 def Preprocess_gt(box_list, MOTS_gt_list):
-    
+    for frame in range(len(MOTS_gt_list)):
+        mots_objects = MOTS_gt_list[frame]
+        boxes = box_list[frame]
+
+        for mots_obj in mots_objects:
+            mots_track_id = mots_obj['track_id']
+            mots_bbox = mots_obj['bbox']
+            
+            # box_list에서 ID가 매칭되지 않는 경우
+            if not any(box['track_id'] == mots_track_id for box in boxes):
+                max_iou = 0
+                replacement_id = None
+                
+                # IoU 기준으로 가장 큰 box_list 객체의 ID 찾기
+                for box in boxes:
+                    box_bbox = box['bbox']
+                    iou = calculate_iou(mots_bbox, box_bbox)
+
+                    # IoU가 threshold 이상이고 현재 최대 iou보다 큰 경우 ID 업데이트
+                    if iou > 0.5 and iou > max_iou:
+                        max_iou = iou
+                        replacement_id = box['track_id']
+                
+                # 새로운 ID를 대체
+                if replacement_id is not None:
+                    mots_obj['track_id'] = replacement_id
+                    mots_obj['iou'] = max_iou  # IoU 정보 저장 (옵션)
+                    
+    return MOTS_gt_list
