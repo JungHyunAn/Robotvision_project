@@ -149,28 +149,28 @@ def Construct_initial_guess(image : np.array, box_list, depth_map):
     return initial_guess # (Gray, class_id, instance_id, depth)
 
 def calculate_iou(box1, box2):
-    x1, y1, w1, h1 = box1
-    x2, y2, w2, h2 = box2
-    
-    # Box1과 Box2의 좌표 계산
-    x1_min, y1_min = x1, y1
-    x1_max, y1_max = x1 + w1, y1 + h1
-    x2_min, y2_min = x2, y2
-    x2_max, y2_max = x2 + w2, y2 + h2
+    # Unpack the coordinates of each box
+    x1_min, y1_min, x1_max, y1_max = box1
+    x2_min, y2_min, x2_max, y2_max = box2
 
-    # 교차 영역 계산
+    # Calculate the coordinates of the intersection rectangle
     inter_x1 = max(x1_min, x2_min)
     inter_y1 = max(y1_min, y2_min)
     inter_x2 = min(x1_max, x2_max)
     inter_y2 = min(y1_max, y2_max)
-    inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
 
-    # 각 box의 면적
-    box1_area = w1 * h1
-    box2_area = w2 * h2
+    # Calculate the intersection area
+    inter_width = max(0, inter_x2 - inter_x1)
+    inter_height = max(0, inter_y2 - inter_y1)
+    inter_area = inter_width * inter_height
 
-    # IoU 계산
+    # Calculate the area of each box
+    box1_area = (x1_max - x1_min) * (y1_max - y1_min)
+    box2_area = (x2_max - x2_min) * (y2_max - y2_min)
+
+    # Calculate the IoU
     iou = inter_area / float(box1_area + box2_area - inter_area)
+
     return iou
 
 def Preprocess_gt(box_list, MOTS_gt_list):
@@ -203,3 +203,51 @@ def Preprocess_gt(box_list, MOTS_gt_list):
                     mots_obj['iou'] = max_iou  # IoU 정보 저장 (옵션)
                     
     return MOTS_gt_list
+
+
+def GT2DetectID(Detect_list, MOTS_gt_list):
+    # MOTS_gt_list format : [{instance_id : Segmentation mask} for every frame]
+    # Detect_list format: [[[Class_ID, Instance_ID, left_x, up_y, right_x, down_y] for every bounding box] for every frame]
+    output_dict = {}
+    iou_threshold = 0.5
+    picked_target = []
+    
+    for frame in range(len(MOTS_gt_list)):
+        gt_masks = MOTS_gt_list[frame]
+        detect_boxes = Detect_list[frame]
+
+        # Track all mots_gt ids
+        for g_id in gt_masks.keys():
+            if g_id in output_dict.keys():
+                if output_dict[g_id] is not None:
+                    continue
+
+            max_iou = 0
+            target_id = None
+
+            for d_box in detect_boxes:
+                g_mask = gt_masks[g_id]
+                d_mask = np.zeros_like(g_mask)
+                d_mask[d_box[3]:d_box[5], d_box[2]:d_box[4]] = 1
+                intersection = np.sum(np.multiply(g_mask, d_mask))
+                iou =  intersection / float(np.sum(g_mask) + (d_box[5]-d_box[3])*(d_box[4]-d_box[2]) - intersection)
+
+                if iou > iou_threshold and iou > max_iou:
+                    max_iou = iou
+                    target_id = d_box[1]
+
+            output_dict[g_id] = target_id
+
+            if target_id is not None:
+                picked_target.append(target_id)
+    
+    # Assign GT ids with None
+    target_candiate = list(set(output_dict.keys()) - set(picked_target))
+    i = 0
+    for g_id in output_dict.keys():
+        if output_dict[g_id] is None:
+            output_dict[g_id] = target_candiate[i]
+            i += 1
+
+    # Output format : {GT_instance_id : Target id from DeepSORT}
+    return output_dict
