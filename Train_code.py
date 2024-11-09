@@ -34,14 +34,14 @@ val_root_list = []
 with open('matched_train.csv', mode='r') as file:
     next(file) #skip header
     for line in file:
-        raw_path, MOTS_path, depth_path, s_idx, l_idx, fx, fy, cx, cy = line.strip().split()
-        train_root_list.append([raw_path, MOTS_path, depth_path, s_idx, l_idx, [fx, fy, cx, cy]])
+        raw_path, MOTS_path, depth_path, s_idx, l_idx, fx, fy, cx, cy = line.strip().split(',')
+        train_root_list.append([raw_path.replace("\\", "/"), MOTS_path.replace("\\", "/"), depth_path.replace("\\", "/"), int(s_idx), int(l_idx), [float(fx), float(fy), float(cx), float(cy)]])
 
 with open('matched_val.csv', mode='r') as file:
     next(file) #skip header
     for line in file:
-        raw_path, MOTS_path, depth_path, s_idx, l_idx, fx, fy, cx, cy = line.strip().split()
-        val_root_list.append([raw_path, MOTS_path, depth_path, s_idx, l_idx, [fx, fy, cx, cy]])
+        raw_path, MOTS_path, depth_path, s_idx, l_idx, fx, fy, cx, cy = line.strip().split(',')
+        val_root_list.append([raw_path.replace("\\", "/"), MOTS_path.replace("\\", "/"), depth_path.replace("\\", "/"), int(s_idx), int(l_idx), [float(fx), float(fy), float(cx), float(cy)]])
 
 
 
