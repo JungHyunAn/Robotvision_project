@@ -182,7 +182,7 @@ class PreprocessingCNN(nn.Module):
     
 
 class PostprocessingCNN(nn.Module):
-    def __init__(self, input_channels, output_channels):
+    def __init__(self, input_channels):
         super(PostprocessingCNN, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1)
@@ -190,7 +190,9 @@ class PostprocessingCNN(nn.Module):
         self.conv3 = nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1)
         self.conv4 = nn.Conv2d(16, 8, kernel_size=3, stride=1, padding=1)
         self.maxunpool2 = nn.MaxUnpool2d(kernel_size=2, stride=2)  # Upsample by 2
-        self.conv5 = nn.Conv2d(8, output_channels, kernel_size=1)
+        self.conv_class = nn.Conv2d(16, 3, kernel_size=1)
+        self.conv_instance = nn.Conv2d(16, 1, kernel_size=1)
+        self.conv_depth = nn.Conv2d(16, 1, kernel_size=1)
 
     def forward(self, x, indices1, indices2):
         x = F.relu(self.conv1(x))
@@ -199,8 +201,14 @@ class PostprocessingCNN(nn.Module):
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
         x = self.maxunpool2(x, indices2)
-        x = F.relu(self.conv5(x))
-        return x
+
+        class_map = self.conv_class(x)
+
+        instance_map = self.conv_instance(x)
+
+        depth_map = self.conv_depth(x)
+
+        return class_map, instance_map, depth_map
 
 
 class Pred_model(nn.Module):
@@ -221,15 +229,18 @@ class CombinedLoss(nn.Module):
     def __init__(self):
         super(CombinedLoss, self).__init__()
         self.mse_loss = nn.MSELoss()
+        self.cross_entropy_loss = nn.CrossEntropyLoss()
 
     def forward(self, class_pred, class_gt, instance_pred, instance_gt, depth_pred, depth_gt):
-        # IoU loss for class and instance IDs
-        class_loss = self.mse_loss(class_pred, class_gt)
+        # Cross entropy loss expects class_pred to have raw logits and class_gt to have integer class labels
+        # Make sure class_gt is of shape (batch, height, width) with integer values representing class labels
+        class_loss = self.cross_entropy_loss(class_pred, class_gt)
+
+        # MSE loss for instance and depth predictions
         instance_loss = self.mse_loss(instance_pred, instance_gt)
-        
-        # L1 loss for depth
         depth_loss = self.mse_loss(depth_pred, depth_gt)
         
-        # Combined loss
-        total_loss = 15*class_loss + 15*instance_loss + depth_loss
+        # Total combined loss with weights for different components
+        total_loss = 15 * class_loss + 15 * instance_loss + depth_loss
+        
         return total_loss
