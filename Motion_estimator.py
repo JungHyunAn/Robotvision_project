@@ -67,7 +67,7 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
         img = image_sequence[i]
         
         # Perform object detection using YOLO model
-        results = YOLO_model(img)
+        results = YOLO_model(img, verbose=False)
         detections = results[0].boxes  # Extract bounding boxes from YOLO
 
         # List to hold detection boxes for the current frame
@@ -79,6 +79,10 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
             w = x2 - x1
             h = y2 - y1
             boxes.append([[x1, y1, w, h], conf, cls])
+
+        # Initialize for frame 0
+        if i == 0:
+            tracker.update_tracks(boxes, frame=img)
 
         # Update tracker only if there are detections in the frame
         frame_boxes = []
