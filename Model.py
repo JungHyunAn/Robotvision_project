@@ -97,66 +97,41 @@ class ConvGRU(nn.Module):
 
         self.cells = cells
 
+
     def forward(self, x, hidden=None):
         '''
         Parameters
         ----------
-        x : 4D input tensor. (batch, channels, height, width).
-        hidden : list of 4D hidden state representations. (batch, channels, height, width).
+        x : 4D input tensor. (time, channels, height, width).
+        hidden : list of 3D initial hidden states, one for each layer. Each hidden state is of shape (channels, height, width).
 
         Returns
         -------
-        upd_hidden : 5D hidden representation. (layer, batch, channels, height, width).
+        hidden_seq : 4D hidden representation. (time, channels, height, width).
         '''
+        seq_len, _, height, width = x.size()
+
+        # If no hidden state is provided, initialize it with zeros for each layer
         if hidden is None:
-            hidden = [None] * self.n_layers
+            hidden = [torch.zeros(self.hidden_sizes[i], height, width, device=x.device)
+                      for i in range(self.n_layers)]
 
-        input_ = x
-
-        upd_hidden = []
-
-        for layer_idx in range(self.n_layers):
-            cell = self.cells[layer_idx]
-            cell_hidden = hidden[layer_idx]
-
-            # pass through layer
-            upd_cell_hidden = cell(input_, cell_hidden)
-            upd_hidden.append(upd_cell_hidden)
-            # update input_ to the last updated hidden layer for next pass
-            input_ = upd_cell_hidden
-
-        # retain tensors in list to allow different hidden sizes
-        return upd_hidden
-
-    def sequence_forward(self, x_seq, hidden=None):
-        '''
-        Parameters
-        ----------
-        x_seq : 5D input tensor. (time, batch, channels, height, width).
-        hidden : list of 4D hidden state representations. (batch, channels, height, width).
-
-        Returns
-        -------
-        output_seq : list of updated hidden representations for each time step.
-        final_hidden : list of final hidden states for each layer.
-        '''
-        seq_len = x_seq.size(0)
-        if hidden is None:
-            hidden = [None] * self.n_layers
-
-        current_hidden = hidden
-        output_seq = []
-
-        # Iterate over the sequence
+        # Iterate through the sequence
+        hidden_seq = []
         for t in range(seq_len):
-            x_t = x_seq[t]
-            current_hidden = self.forward(x_t, current_hidden)
-            output_seq.append(current_hidden[-1])  # Append the output of the last layer
+            input_ = x[t, :, :, :]
+            new_hidden = []
+            for layer_idx in range(self.n_layers):
+                hidden[layer_idx] = self.cells[layer_idx](input_, hidden[layer_idx])
+                input_ = hidden[layer_idx]
+                new_hidden.append(hidden[layer_idx])
+            hidden = new_hidden
+            hidden_seq.append(hidden[-1])
 
-        # Stack outputs for each time step
-        output_seq = torch.stack(output_seq, dim=0)
+        # Stack hidden states along the time dimension
+        hidden_seq = torch.stack(hidden_seq, dim=0)
 
-        return output_seq, current_hidden
+        return hidden_seq
 
 
 class PreprocessingCNN(nn.Module):
@@ -212,17 +187,26 @@ class PostprocessingCNN(nn.Module):
 
 
 class Pred_model(nn.Module):
-    def __init__(self, input_channels, output_channels, hidden_size, GRU_kernel, GRU_layers):
+    def __init__(self, input_channels=4, hidden_size=32, GRU_kernel=5, GRU_layers=3):
         super(Pred_model, self).__init__()
         self.preCNN = PreprocessingCNN(input_channels, hidden_size)
         self.GRU = ConvGRU(hidden_size, hidden_size, GRU_kernel, GRU_layers)
-        self.postCNN = PostprocessingCNN(hidden_size, output_channels)
+        self.postCNN = PostprocessingCNN(hidden_size)
 
     def forward(self, x):
+        '''
+        Input:
+        x : 4D input tensor with shape (time, channels, height, width)
+
+        Output:
+        class_seq : 4D class ID output tensor with shape (time, class ID channel=3, height, width)
+        instance_seq : 4D class ID output tensor with shape (time, instance ID channel=1, height, width)
+        depth_seq : 4D class ID output tensor with shape (time, depth channel=1, height, width)
+        '''
         x, indices1, indices2 = self.preCNN(x)
         x = self.GRU(x)
-        x = self.postCNN(x, indices1, indices2)
-        return x
+        class_seq, instance_seq, depth_seq = self.postCNN(x, indices1, indices2)
+        return class_seq, instance_seq, depth_seq
 
 
 class CombinedLoss(nn.Module):
