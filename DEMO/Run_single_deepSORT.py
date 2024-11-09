@@ -113,17 +113,17 @@ for i in range(446):
 
 box_list_sequence = Track_image_sequence(image_sequence, model, tracker, 446)
 
-'''
 for i in range(446):
     if i < 10:
-        combined_path = 'DEMO/Sequence_demo/0001_rgb_combined/00000' + str(i) + '.png'
+        combined_path = 'DEMO/Combined_sequence_demo/0001_rgb_combined/00000' + str(i) + '.png'
     elif i < 100:
-        combined_path = 'DEMO/Sequence_demo/0001_rgb_combined/0000' + str(i) + '.png'
+        combined_path = 'DEMO/Combined_sequence_demo/0001_rgb_combined/0000' + str(i) + '.png'
     else:
-        combined_path = 'DEMO/Sequence_demo/0001_rgb_combined/000' + str(i) + '.png'
+        combined_path = 'DEMO/Combined_sequence_demo/0001_rgb_combined/000' + str(i) + '.png'
     cv2.imwrite(combined_path, Combine_Tracker_image(image_sequence[i], box_list_sequence[i]))
-'''
 
+
+'''
 for i in range(446):
     if i < 10:
         guessed_path = 'DEMO/Combined_sequence_demo/0001_rgb_initial_guess/00000' + str(i) + '.png'
@@ -134,3 +134,4 @@ for i in range(446):
     pred_depth = Image_depth(image_sequence[i], depth_model, [721.5, 721.5, 609.6, 172.9])
     initial_guess = Visualize_guess(Construct_initial_guess(image_sequence[i], box_list_sequence[i], pred_depth))[4]
     cv2.imwrite(guessed_path, initial_guess)
+'''

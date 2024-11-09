@@ -100,7 +100,12 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
                 x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
 
                 # Append [Class_ID, Instance_ID, left_x, up_y, right_x, down_y]
-                frame_boxes.append([cls, track_id, x1, y1, x2, y2])
+                if cls in [2, 3, 5, 7]: # Assume as car if COCO label is 'car' or 'motorcycle' or 'bus' or 'truck'
+                    frame_boxes.append([1, track_id, x1, y1, x2, y2])
+                elif cls in [0]: # Assume as pedestiran if COCO label is 'person'
+                    frame_boxes.append([2, track_id, x1, y1, x2, y2])
+                else:
+                    frame_boxes.append([0, track_id, x1, y1, x2, y2])
 
         # Append detections for the current frame to the sequence list
         box_list_sequence.append(frame_boxes)
