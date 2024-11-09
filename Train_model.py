@@ -59,7 +59,7 @@ def produce_entire_sequence(raw_root, mots_root, depth_root, s_idx, l_idx):
     return entire_input_seq, entire_class_seq, entire_instance_seq, entire_depth_seq
 
 
-def train_convgru(model, YOLO_model, depth_model, criterion, optimizer, train_root_list, val_root_list, n_epochs, device):
+def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root_list, val_root_list, n_epochs, device):
     # train/val_root_list = [[raw_root, mots_root, depth_root, start_index, last_index, camera_intrinsic], ...]
     
     model.train()
@@ -75,7 +75,7 @@ def train_convgru(model, YOLO_model, depth_model, criterion, optimizer, train_ro
             entire_input_seq, entire_class_seq, entire_instance_seq, entire_depth_seq = produce_entire_sequence(raw_root, mots_root, depth_root, s_idx, l_idx)
 
             # Slice entire_seq in average of 50 frames
-            n_batch = (l_idx - s_idx + 1) // 50
+            n_batch = (l_idx - s_idx) // 50 + 1
             batch_breaks = [s_idx]
             batch_breaks = batch_breaks + random.sample(range(s_idx+2, l_idx), n_batch - 1)
             batch_breaks.append(l_idx + 1)
@@ -97,46 +97,23 @@ def train_convgru(model, YOLO_model, depth_model, criterion, optimizer, train_ro
                     depth_map = Image_depth(input_seq[frame], depth_model, cam_int)
                     intital_guess_seq.append(Construct_initial_guess(input_seq[frame], bbox_seq[frame], depth_map))
 
-                # Construct dict between GT instance ID and bbox instance ID
+                # Construct dict between GT instance ID and bbox instance ID / Modify instance_seq
                 GT2bbox_instance_dict = GT2DetectID(bbox_seq, instance_seq)
+                instance_seq = [np.vectorize(lambda x: GT2bbox_instance_dict.get(x, x))(arr) for arr in instance_seq]
+                
+                # Forward propagate in model
+                pred_class_seq, pred_instance_seq, pred_depth_seq = model(input_seq)
 
-
-
-
-
-
-
-
-'''
-        with tqdm(dataloader, unit="batch") as tepoch:
-            tepoch.set_description(f"Epoch [{epoch+1}/{n_epochs}]")
-            for batch_idx, (input_seq, target_seq) in enumerate(tepoch):
-                # Move data to the device
-                input_seq, target_seq = input_seq.to(device), target_seq.to(device)
-
-                # Initialize the hidden state
-                hidden = None
-
-                # Forward pass through the model
-                output_seq, _ = model.sequence_forward(input_seq, hidden)
-
-                # Compute the loss
-                loss = criterion(output_seq, target_seq)
+                # Compute loss
+                loss = criterion(pred_class_seq, class_seq, pred_instance_seq, instance_seq, pred_depth_seq, depth_seq)
 
                 # Backpropagation
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-                # Update epoch loss
+                # Update Epoch loss
                 epoch_loss += loss.item()
-
-                # Update tqdm progress bar
-                tepoch.set_postfix(loss=loss.item())
-
-        avg_epoch_loss = epoch_loss / len(dataloader)
+        
+        avg_epoch_loss = epoch_loss / 5896
         print(f"Epoch [{epoch+1}/{n_epochs}], Loss: {avg_epoch_loss:.4f}")
-
-        min_loss = float('inf')
-'''
-
