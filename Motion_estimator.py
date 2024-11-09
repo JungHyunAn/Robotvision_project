@@ -205,15 +205,15 @@ def Preprocess_gt(box_list, MOTS_gt_list):
     return MOTS_gt_list
 
 
-def GT2DetectID(Detect_list, MOTS_gt_list):
-    # MOTS_gt_list format : [{instance_id : Segmentation mask} for every frame]
+def GT2DetectID(Detect_list, Instance_gt_list):
+    # Instance_gt_list format : [{instance_id : Segmentation mask} for every frame]
     # Detect_list format: [[[Class_ID, Instance_ID, left_x, up_y, right_x, down_y] for every bounding box] for every frame]
     output_dict = {}
-    iou_threshold = 0.5
+    iou_threshold = 0.2
     picked_target = []
     
-    for frame in range(len(MOTS_gt_list)):
-        gt_masks = MOTS_gt_list[frame]
+    for frame in range(len(Instance_gt_list)):
+        gt_masks = Instance_gt_list[frame]
         detect_boxes = Detect_list[frame]
 
         # Track all mots_gt ids
