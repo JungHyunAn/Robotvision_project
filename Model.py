@@ -180,6 +180,7 @@ class PostprocessingCNN(nn.Module):
         x = self.maxunpool2(x, indices2, output_size=size2)
 
         class_map = self.conv_class(x)
+        class_map = np.transpose(class_map, (0, 3, 1, 2))
 
         instance_map = self.conv_instance(x)
         instance_map = np.squeeze(instance_map)
@@ -203,9 +204,9 @@ class Pred_model(nn.Module):
         x : 4D input tensor with shape (time, channels, height, width)
 
         Output:
-        class_seq : 4D class ID output tensor with shape (time, class ID channel=3, height, width)
-        instance_seq : 4D class ID output tensor with shape (time, instance ID channel=1, height, width)
-        depth_seq : 4D class ID output tensor with shape (time, depth channel=1, height, width)
+        class_seq : 4D class ID output tensor with shape (time, height, width, class ID channel=3)
+        instance_seq : 3D class ID output tensor with shape (time, height, width)
+        depth_seq : 3D class ID output tensor with shape (time, height, width)
         '''
         x, indices1, indices2, size1, size2 = self.preCNN(x)
         x = self.GRU(x)
