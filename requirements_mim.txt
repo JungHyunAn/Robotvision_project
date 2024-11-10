@@ -1,2 +1,2 @@
-mmengine
-mmcv
+mmengine>=0.7.0 
+mmcv>=2.0.0,<2.1.0
