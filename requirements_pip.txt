@@ -1,5 +1,5 @@
 wheel
-openmim
+openmim==0.3.9
 timm
 tensorboardX
 imgaug
