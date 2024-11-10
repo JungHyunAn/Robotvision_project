@@ -9,7 +9,7 @@ import os
 from torch.nn import init
 from tqdm import tqdm
 from deep_sort_realtime.deepsort_tracker import DeepSort
-from Motion_estimator import Image_depth, Track_image_sequence, Construct_initial_guess, GT2DetectID
+from Motion_estimator import Image_depth, Track_image_sequence, Construct_initial_guess, GT2DetectID, calculate_mota
 
 
 def produce_entire_sequence(raw_root, mots_root, depth_root, s_idx, l_idx):
@@ -132,3 +132,68 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
         
         avg_epoch_loss = epoch_loss / 5896
         print(f"Epoch [{epoch+1}/{n_epochs}], Loss: {avg_epoch_loss:.4f}")
+
+        # Evaluation every 5 epochs
+        min_mse = float("inf")
+        min_cross_entropy = float("inf")
+        max_mota = 0
+        if epoch % 5 == 0 and epoch:
+            model.eval()
+            val_mse_loss = 0.0
+            val_cross_entropy_loss = 0.0
+            total_mota = 0.0
+            total_frames = 0
+
+            for raw_root, mots_root, depth_root, s_idx, l_idx, cam_int in val_root_list:
+                with torch.no_grad():
+                    # Produce entire sequence for video
+                    entire_input_seq, entire_class_seq, entire_instance_seq, entire_depth_seq = produce_entire_sequence(raw_root, mots_root, depth_root, s_idx, l_idx)
+
+                    # Forward propagate
+                    tracker = DeepSort(max_age=30, n_init=0, nn_budget=200)
+                    bbox_seq = Track_image_sequence(entire_input_seq, YOLO_model, tracker, len(entire_input_seq))
+
+                    initial_guess_seq = [Construct_initial_guess(entire_input_seq[frame], bbox_seq, Image_depth(entire_input_seq[frame], depth_model, cam_int)) for frame in range(len(entire_input_seq))]
+                    initial_guess_seq = np.transpose(np.array(initial_guess_seq), (0, 3, 1, 2))
+                    class_seq = np.array(entire_class_seq)
+                    depth_seq = np.array(entire_depth_seq)
+
+                    initial_guess_seq = torch.from_numpy(initial_guess_seq).float().to(device)
+                    class_seq = torch.from_numpy(class_seq).long().to(device)  # For cross-entropy, class labels should be long type
+                    depth_seq = torch.from_numpy(depth_seq).float().to(device)
+
+                    pred_class_seq, pred_instance_seq, pred_depth_seq = model(initial_guess_seq)
+
+                    # Compute validation losses
+                    # MSE Loss for Depth Prediction
+                    mse_loss = F.mse_loss(pred_depth_seq, depth_seq)
+                    val_mse_loss += mse_loss.item()
+
+                    # Cross-Entropy Loss for Class Prediction
+                    cross_entropy_loss = F.cross_entropy(pred_class_seq, class_seq)
+                    val_cross_entropy_loss += cross_entropy_loss.item()
+
+                    # Calculate MOTA for Instance Prediction
+                    for frame_idx in range(len(pred_instance_seq)):
+                        gt_instances = entire_instance_seq[frame_idx]
+                        pred_instances = pred_instance_seq[frame_idx]
+                        mota = calculate_mota(gt_instances, pred_instances)  # Custom function to calculate MOTA for the frame
+                        total_mota += mota
+                        total_frames += 1
+
+            # Average the losses and MOTA score
+            avg_mse_loss = val_mse_loss / len(val_root_list)
+            avg_cross_entropy_loss = val_cross_entropy_loss / len(val_root_list)
+            avg_mota = total_mota / total_frames if total_frames > 0 else 0.0
+
+            print(f"Validation - Epoch [{epoch+1}/{n_epochs}], Depth MSE Loss (Depth): {avg_mse_loss:.4f}, Class Cross-Entropy Loss (Class): {avg_cross_entropy_loss:.4f}, Instance MOTA: {avg_mota:.4f}")
+
+            # Save model if 2 of 3 improve
+            if (avg_mse_loss < min_mse and avg_cross_entropy_loss < min_cross_entropy) \
+            or (avg_cross_entropy_loss < min_cross_entropy and avg_mota > max_mota) \
+            or (avg_mota > max_mota and avg_mse_loss < min_mse):
+                model_save_path = os.path.join("models", f"model_epoch_{epoch+1}.pth")
+                torch.save(model.state_dict(), model_save_path)
+                print(f"Model saved at {model_save_path}")
+
+            model.train()

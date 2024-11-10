@@ -251,3 +251,34 @@ def GT2DetectID(Detect_list, Instance_gt_list):
 
     # Output format : {GT_instance_id : Target id from DeepSORT}
     return output_dict
+
+
+def calculate_mota(gt_instances, pred_instances):
+    """
+    Calculate MOTA (Multiple Object Tracking Accuracy) for a single frame.
+    
+    Args:
+        gt_instances (list of dict): Ground truth instances, each represented as a dictionary with instance ID and mask.
+        pred_instances (list of dict): Predicted instances, each represented as a dictionary with instance ID and mask.
+    
+    Returns:
+        float: MOTA score for the frame.
+    """
+    total_misses = 0
+    total_false_positives = 0
+    total_mismatches = 0
+    total_gt_instances = len(gt_instances)
+
+    # Assuming gt_instances and pred_instances are dictionaries with instance_id as keys and mask as values
+    matched_instances = set(gt_instances.keys()).intersection(set(pred_instances.keys()))
+    total_mismatches = len(gt_instances) + len(pred_instances) - 2 * len(matched_instances)
+
+    # Count misses and false positives
+    total_misses = len(set(gt_instances.keys()) - matched_instances)
+    total_false_positives = len(set(pred_instances.keys()) - matched_instances)
+
+    if total_gt_instances == 0:
+        return 1.0 if len(pred_instances) == 0 else 0.0
+
+    mota = 1 - (total_misses + total_false_positives + total_mismatches) / total_gt_instances
+    return max(mota, 0.0)
