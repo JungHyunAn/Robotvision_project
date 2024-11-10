@@ -182,8 +182,10 @@ class PostprocessingCNN(nn.Module):
         class_map = self.conv_class(x)
 
         instance_map = self.conv_instance(x)
+        instance_map = np.squeeze(instance_map)
 
         depth_map = self.conv_depth(x)
+        depth_map = np.squeeze(depth_map)
 
         return class_map, instance_map, depth_map
 

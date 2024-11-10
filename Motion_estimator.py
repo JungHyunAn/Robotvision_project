@@ -253,32 +253,52 @@ def GT2DetectID(Detect_list, Instance_gt_list):
     return output_dict
 
 
-def calculate_mota(gt_instances, pred_instances):
-    """
-    Calculate MOTA (Multiple Object Tracking Accuracy) for a single frame.
-    
-    Args:
-        gt_instances (list of dict): Ground truth instances, each represented as a dictionary with instance ID and mask.
-        pred_instances (list of dict): Predicted instances, each represented as a dictionary with instance ID and mask.
-    
-    Returns:
-        float: MOTA score for the frame.
-    """
-    total_misses = 0
-    total_false_positives = 0
-    total_mismatches = 0
+def calculate_motsa(gt_instances, pred_instances, last_matches, iou_threshold=0.5):
+
+    total_tp = 0
+    total_fp = 0
+    total_ids = 0
     total_gt_instances = len(gt_instances)
+    total_pixels = list(gt_instances.values())[0].size  # Fixed values access
 
-    # Assuming gt_instances and pred_instances are dictionaries with instance_id as keys and mask as values
-    matched_instances = set(gt_instances.keys()).intersection(set(pred_instances.keys()))
-    total_mismatches = len(gt_instances) + len(pred_instances) - 2 * len(matched_instances)
+    current_matches = {}
 
-    # Count misses and false positives
-    total_misses = len(set(gt_instances.keys()) - matched_instances)
-    total_false_positives = len(set(pred_instances.keys()) - matched_instances)
+    # Matching ground truth instances to predicted instances using IoU
+    def calculate_iou(mask1, mask2):
+        intersection = np.logical_and(mask1, mask2).sum()
+        union = np.logical_or(mask1, mask2).sum()
+        return intersection / union if union > 0 else 0
 
-    if total_gt_instances == 0:
-        return 1.0 if len(pred_instances) == 0 else 0.0
+    for gt_id, gt_mask in gt_instances.items():
+        best_iou = 0
+        best_pred_id = None
+        for pred_id, pred_mask in pred_instances.items():
+            iou = calculate_iou(gt_mask, pred_mask)
+            if iou > iou_threshold and iou > best_iou:
+                best_iou = iou
+                best_pred_id = pred_id
 
-    mota = 1 - (total_misses + total_false_positives + total_mismatches) / total_gt_instances
-    return max(mota, 0.0)
+        if best_pred_id is not None:
+            current_matches[gt_id] = best_pred_id
+            total_tp += 1
+        else:
+            total_fp += 1
+
+    # False positives (predicted instances without corresponding GT instances)
+    matched_pred_ids = set(current_matches.values())
+    for pred_id in pred_instances:
+        if pred_id not in matched_pred_ids:
+            total_fp += 1
+
+    # Count ID switches
+    for gt_id in current_matches:
+        for frame_idx in range(len(last_matches) - 1, -1, -1):
+            if gt_id in last_matches[frame_idx]:
+                if current_matches[gt_id] != last_matches[frame_idx][gt_id]:
+                    total_ids += 1
+                    break
+
+    last_matches.append(current_matches)
+    motsa = (total_tp - total_fp - total_ids) / total_gt_instances
+
+    return max(motsa, 0.0)
