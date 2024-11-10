@@ -38,11 +38,11 @@ class ConvGRUCell(nn.Module):
             state_size = [batch_size, self.hidden_size] + list(spatial_size)
             prev_state = torch.zeros(state_size, device=input_.device)
 
-        # data size is [batch, channel, height, width]
-        stacked_inputs = torch.cat([input_, prev_state], dim=1)
+        # data size is [channel, height, width]
+        stacked_inputs = torch.cat([input_, prev_state], dim=0)
         update = torch.sigmoid(self.update_gate(stacked_inputs))
         reset = torch.sigmoid(self.reset_gate(stacked_inputs))
-        out_inputs = torch.tanh(self.out_gate(torch.cat([input_, prev_state * reset], dim=1)))
+        out_inputs = torch.tanh(self.out_gate(torch.cat([input_, prev_state * reset], dim=0)))
         new_state = prev_state * (1 - update) + out_inputs * update
 
         return new_state
@@ -148,12 +148,14 @@ class PreprocessingCNN(nn.Module):
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
+        size2 = x.size()
         x, indice2 = self.maxpool1(x)
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
+        size1 = x.size()
         x, indice1 = self.maxpool2(x)
         x = F.relu(self.conv5(x))
-        return x, indice1, indice2
+        return x, indice1, indice2, size1, size2
     
 
 class PostprocessingCNN(nn.Module):
@@ -169,13 +171,13 @@ class PostprocessingCNN(nn.Module):
         self.conv_instance = nn.Conv2d(16, 1, kernel_size=1)
         self.conv_depth = nn.Conv2d(16, 1, kernel_size=1)
 
-    def forward(self, x, indices1, indices2):
+    def forward(self, x, indices1, indices2, size1, size2):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
-        x = self.maxunpool1(x, indices1)
+        x = self.maxunpool1(x, indices1, output_size=size1)
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
-        x = self.maxunpool2(x, indices2)
+        x = self.maxunpool2(x, indices2, output_size=size2)
 
         class_map = self.conv_class(x)
 
@@ -203,9 +205,9 @@ class Pred_model(nn.Module):
         instance_seq : 4D class ID output tensor with shape (time, instance ID channel=1, height, width)
         depth_seq : 4D class ID output tensor with shape (time, depth channel=1, height, width)
         '''
-        x, indices1, indices2 = self.preCNN(x)
+        x, indices1, indices2, size1, size2 = self.preCNN(x)
         x = self.GRU(x)
-        class_seq, instance_seq, depth_seq = self.postCNN(x, indices1, indices2)
+        class_seq, instance_seq, depth_seq = self.postCNN(x, indices1, indices2, size1, size2)
         return class_seq, instance_seq, depth_seq
 
 

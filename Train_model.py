@@ -81,7 +81,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
             # Slice entire_seq in average of 50 frames
             n_batch = (len(entire_input_seq) - 1) // 50 + 1
             batch_breaks = [s_idx]
-            batch_breaks = batch_breaks + random.sample(range(1, len(entire_input_seq)), n_batch - 1)
+            batch_breaks = batch_breaks + sorted(random.sample(range(s_idx+1, len(entire_input_seq)), n_batch - 1))
             batch_breaks.append(len(entire_input_seq))
             
             for i in range(n_batch):
@@ -96,19 +96,30 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                 bbox_seq = Track_image_sequence(input_seq, YOLO_model, tracker, batch_breaks[i+1] - batch_breaks[i])
 
                 # Construct Initial Guess Sequence
-                intital_guess_seq = []
+                initial_guess_seq = []
                 for frame in range(batch_breaks[i+1] - batch_breaks[i]):
                     depth_map = Image_depth(input_seq[frame], depth_model, cam_int)
-                    intital_guess_seq.append(Construct_initial_guess(input_seq[frame], bbox_seq[frame], depth_map))
+                    initial_guess_seq.append(Construct_initial_guess(input_seq[frame], bbox_seq[frame], depth_map))
 
                 # Construct dict between GT instance ID and bbox instance ID / Modify instance_seq
                 GT2bbox_instance_dict = GT2DetectID(bbox_seq, instance_seq)
-                instance_seq = [np.vectorize(GT2bbox_instance_dict.get)(arr) for arr in instance_seq]
+                instance_seq = [{GT2bbox_instance_dict.get(k, k): v for k, v in instance_dict.items()} for instance_dict in instance_seq]
                 
                 # Forward propagate in model
-                pred_class_seq, pred_instance_seq, pred_depth_seq = model(input_seq)
+                initial_guess_seq = np.transpose(np.array(initial_guess_seq), (0, 3, 1, 2))
+                class_seq = np.array(class_seq)
+                depth_seq = np.array(depth_seq)
+
+                initial_guess_seq = torch.from_numpy(initial_guess_seq).float().to(device)
+                class_seq = torch.from_numpy(class_seq).float().to(device)
+                depth_seq = torch.from_numpy(depth_seq).float().to(device)
+
+                pred_class_seq, pred_instance_seq, pred_depth_seq = model(initial_guess_seq)
 
                 # Compute loss
+                instance_seq = [[k*v for k, v in instance_dict.items()].sum(axis=0) for instance_dict in instance_seq] # Concatentate mask
+                instance_seq = np.array(instance_seq)
+                instance_seq = torch.from_numpy(instance_seq).float().to(device)
                 loss = criterion(pred_class_seq, class_seq, pred_instance_seq, instance_seq, pred_depth_seq, depth_seq)
 
                 # Backpropagation
