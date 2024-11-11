@@ -167,9 +167,9 @@ class PostprocessingCNN(nn.Module):
         self.conv3 = nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1)
         self.conv4 = nn.Conv2d(16, 8, kernel_size=3, stride=1, padding=1)
         self.maxunpool2 = nn.MaxUnpool2d(kernel_size=2, stride=2)  # Upsample by 2
-        self.conv_class = nn.Conv2d(16, 3, kernel_size=1)
-        self.conv_instance = nn.Conv2d(16, 1, kernel_size=1)
-        self.conv_depth = nn.Conv2d(16, 1, kernel_size=1)
+        self.conv_class = nn.Conv2d(8, 3, kernel_size=1)
+        self.conv_instance = nn.Conv2d(8, 1, kernel_size=1)
+        self.conv_depth = nn.Conv2d(8, 1, kernel_size=1)
 
     def forward(self, x, indices1, indices2, size1, size2):
         x = F.relu(self.conv1(x))
@@ -180,13 +180,13 @@ class PostprocessingCNN(nn.Module):
         x = self.maxunpool2(x, indices2, output_size=size2)
 
         class_map = self.conv_class(x)
-        class_map = np.transpose(class_map, (0, 3, 1, 2))
+        class_map = class_map.permute(0, 2, 3, 1)
 
         instance_map = self.conv_instance(x)
-        instance_map = np.squeeze(instance_map)
+        instance_map = torch.squeeze(instance_map)
 
         depth_map = self.conv_depth(x)
-        depth_map = np.squeeze(depth_map)
+        depth_map = torch.squeeze(depth_map)
 
         return class_map, instance_map, depth_map
 
