@@ -189,6 +189,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                 instance_seq = [np.sum([k * v for k, v in instance_dict.items()], axis=0)  for instance_dict in instance_seq] # Concatentate mask
                 instance_seq = np.array(instance_seq)
                 instance_seq = torch.from_numpy(instance_seq).float().to(device)
+                class_seq = class_seq.astype(np.int32)
                 class_seq = torch.from_numpy(class_seq).float().to(device)
                 class_seq = class_seq.to(torch.int64)
                 class_seq = F.one_hot(class_seq, num_classes=3)
@@ -260,7 +261,8 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                     
 
                     # Compute validation losses
-                    # MSE Loss for Depth Prediction                    
+                    # MSE Loss for Depth Prediction
+                    class_seq = class_seq.astype(np.int32)                    
                     class_seq = torch.from_numpy(class_seq).float().to(device)
                     class_seq = class_seq.to(torch.int64)
                     class_seq = F.one_hot(class_seq, num_classes=3)
