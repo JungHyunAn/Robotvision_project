@@ -131,7 +131,7 @@ class ConvGRU(nn.Module):
         # Stack hidden states along the time dimension
         hidden_seq = torch.stack(hidden_seq, dim=0)
 
-        return hidden_seq
+        return hidden_seq, hidden
 
 
 class PreprocessingCNN(nn.Module):
@@ -192,16 +192,17 @@ class PostprocessingCNN(nn.Module):
 
 
 class Pred_model(nn.Module):
-    def __init__(self, input_channels=4, hidden_size=32, GRU_kernel=5, GRU_layers=3):
+    def __init__(self, input_channels=6, hidden_size=32, GRU_kernel=5, GRU_layers=3):
         super(Pred_model, self).__init__()
         self.preCNN = PreprocessingCNN(input_channels, hidden_size)
         self.GRU = ConvGRU(hidden_size, hidden_size, GRU_kernel, GRU_layers)
         self.postCNN = PostprocessingCNN(hidden_size)
 
-    def forward(self, x):
+    def forward(self, x, hidden=None):
         '''
         Input:
         x : 4D input tensor with shape (time, channels, height, width)
+        hidden : Final hidden state for CGRU
 
         Output:
         class_seq : 4D class ID output tensor with shape (time, height, width, class ID channel=3)
@@ -209,9 +210,9 @@ class Pred_model(nn.Module):
         depth_seq : 3D class ID output tensor with shape (time, height, width)
         '''
         x, indices1, indices2, size1, size2 = self.preCNN(x)
-        x = self.GRU(x)
+        x, hidden = self.GRU(x, hidden)
         class_seq, instance_seq, depth_seq = self.postCNN(x, indices1, indices2, size1, size2)
-        return class_seq, instance_seq, depth_seq
+        return class_seq, instance_seq, depth_seq, hidden
 
 
 class CombinedLoss(nn.Module):
@@ -227,7 +228,17 @@ class CombinedLoss(nn.Module):
 
         # MSE loss for instance and depth predictions
         instance_loss = self.mse_loss(instance_pred, instance_gt)
-        depth_loss = self.mse_loss(depth_pred, depth_gt)
+        # Mask the depth predictions and ground truth based on the condition depth_gt > 1e-8
+        mask = depth_gt > 1e-8
+        depth_pred_masked = depth_pred[mask]
+        depth_gt_masked = depth_gt[mask]
+
+        # Calculate MSE loss only for the masked values
+        if depth_gt_masked.numel() > 0:  # Check if there are valid elements to avoid division by zero
+            depth_loss = self.mse_loss(depth_pred_masked, depth_gt_masked)
+        else:
+            depth_loss = torch.tensor(0.0, device=depth_gt.device)
+
         
         # Total combined loss with weights for different components
         total_loss = 15 * class_loss + 15 * instance_loss + depth_loss
