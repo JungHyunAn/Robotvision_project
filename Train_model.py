@@ -152,6 +152,8 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
         # Train for each video sequence
         for raw_root, mots_root, depth_root, s_idx, l_idx, cam_int in tqdm(train_root_list,desc=f"Epoch [{epoch+1}/{n_epochs}]"):
             batched_input_root_seq, batched_MOTS_root_seq, batched_depth_root_seq, batch_breaks = produce_batch_root(raw_root, mots_root, depth_root, s_idx, l_idx)
+            
+            # Divide video sequence into batches of different length
             for batch in range(len(batched_input_root_seq)):
                 batched_input_root = batched_input_root_seq[batch]
                 batched_MOTS_root = batched_MOTS_root_seq[batch]
