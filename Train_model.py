@@ -161,7 +161,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
 
                 total_frames += len(batched_input_root_seq[batch])
                 
-                # Load images for batch
+                # Load images for batch / List of np.arrays
                 input_seq, class_seq, instance_seq, depth_seq = produce_batch_sequence(batched_input_root, batched_MOTS_root, batched_depth_root)
 
                 # Run DeepSORT tracking
@@ -188,16 +188,11 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
 
                 depth_seq = np.array(depth_seq)
 
-                # Slice batches into mini_batches such that size doesn't exceed max_size
-                mini_batch_breaks = [batch_breaks[batch]]
-                current_end = batch_breaks[batch] + max_size
-                while current_end < batch_breaks[batch+1]:
-                    mini_batch_breaks.append(current_end)
-                    current_end += max_size
-                mini_batch_breaks.append(batch_breaks[batch+1])
                 hidden = None
-                for idx in range(len(mini_batch_breaks) - 1):
-                    initial_guess_mini = torch.from_numpy(initial_guess_seq[mini_batch_breaks[idx]:mini_batch_breaks[idx+1], :, :, :]).float().to(device)
+                # Slice batches into mini_batches such that size doesn't exceed max_size
+                for idx in range(0, len(input_seq), max_size):
+                    ldx = min(idx + max_size, len(input_seq))
+                    initial_guess_mini = torch.from_numpy(initial_guess_seq[idx : ldx, :, :, :]).float().to(device)
                     
                     if hidden is not None:
                         hidden[0] = hidden[0].detach()
@@ -207,13 +202,13 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                     pred_class_mini, pred_instance_mini, pred_depth_mini, hidden = model(initial_guess_mini, hidden)
 
                     # Compute loss in mini_batch
-                    class_mini = torch.from_numpy(class_seq[mini_batch_breaks[idx]:mini_batch_breaks[idx+1], :, :]).long().to(device)
+                    class_mini = torch.from_numpy(class_seq[idx : ldx, :, :]).long().to(device)
                     class_mini = F.one_hot(class_mini, num_classes=3).float()
                     class_mini = class_mini.to(device)
 
-                    instance_mini = torch.from_numpy(instance_seq[mini_batch_breaks[idx]:mini_batch_breaks[idx+1], :, :]).float().to(device)
+                    instance_mini = torch.from_numpy(instance_seq[idx : ldx, :, :]).float().to(device)
 
-                    depth_mini = torch.from_numpy(depth_seq[mini_batch_breaks[idx]:mini_batch_breaks[idx+1], :, :]).float().to(device)
+                    depth_mini = torch.from_numpy(depth_seq[idx : ldx, :, :]).float().to(device)
 
                     loss = criterion(pred_class_mini, class_mini, pred_instance_mini, instance_mini, pred_depth_mini, depth_mini)
 
@@ -258,9 +253,15 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                     cross_entropy_loss = 0
                     
                     hidden = None
-                    for idx in range(0, len(entire_input_seq), 30):
-                        ldx = min(idx+30, len(entire_input_seq))
+                    for idx in range(0, len(entire_input_seq), max_size):
+                        ldx = min(idx+max_size, len(entire_input_seq))
                         initial_guess_mini = torch.from_numpy(initial_guess_seq[idx : ldx]).float().to(device)
+
+                        if hidden is not None:
+                            hidden[0] = hidden[0].detach()
+                            hidden[1] = hidden[1].detach()
+                            hidden[2] = hidden[2].detach()
+
                         pred_class_seq, pred_instance_seq, pred_depth_seq = model(initial_guess_mini, hidden)
 
                         # Round pred_instance_seq to integer ids

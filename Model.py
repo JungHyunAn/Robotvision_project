@@ -129,7 +129,12 @@ class ConvGRU(nn.Module):
             hidden_seq.append(hidden[-1])
 
         # Stack hidden states along the time dimension
-        hidden_seq = torch.stack(hidden_seq, dim=0)
+        if len(hidden_seq) > 0:
+            hidden_seq = torch.stack(hidden_seq, dim=0)
+        else:
+            print("Warning: hidden_seq is empty")
+            return None  # Or handle the empty case appropriately
+
 
         return hidden_seq, hidden
 
