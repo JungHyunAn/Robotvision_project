@@ -188,10 +188,10 @@ class PostprocessingCNN(nn.Module):
         class_map = class_map.permute(0, 2, 3, 1)
 
         instance_map = self.conv_instance(x)
-        instance_map = torch.squeeze(instance_map)
+        instance_map = torch.squeeze(instance_map, dim=1)
 
         depth_map = self.conv_depth(x)
-        depth_map = torch.squeeze(depth_map)
+        depth_map = torch.squeeze(depth_map, dim=1)
 
         return class_map, instance_map, depth_map
 
@@ -229,6 +229,13 @@ class CombinedLoss(nn.Module):
     def forward(self, class_pred, class_gt, instance_pred, instance_gt, depth_pred, depth_gt):
         # Cross entropy loss expects class_pred to have raw logits and class_gt to have integer class labels
         # Make sure class_gt is of shape (batch, height, width) with integer values representing class labels
+        assert class_pred.shape == class_gt.shape
+        assert instance_pred.shape == instance_gt.shape
+        assert depth_pred.shape == depth_gt.shape
+        assert class_pred.dim() == 4, f'class_pred has shape of {class_pred.shape}'
+        assert instance_pred.dim() == 3, f'instance_pred has shape of {instance_pred.shape}'
+        assert depth_pred.dim() == 3, f'depth_pred has shape of {depth_pred.shape}'
+
         class_loss = self.cross_entropy_loss(class_pred, class_gt)
 
         # MSE loss for instance and depth predictions

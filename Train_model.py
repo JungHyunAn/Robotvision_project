@@ -99,8 +99,8 @@ def produce_batch_root(raw_root, mots_root, depth_root, s_idx, l_idx):
     batched_depth_root = []
 
     n_batch = (len(entire_input_root) - 1) // 50 + 1
-    batch_breaks = [s_idx]
-    batch_breaks = batch_breaks + sorted(random.sample(range(s_idx+1, len(entire_input_root)), n_batch - 1))
+    batch_breaks = [0]
+    batch_breaks = batch_breaks + sorted(random.sample(range(1, len(entire_input_root)), n_batch - 1))
     batch_breaks.append(len(entire_input_root))
     
     for i in range(n_batch):
