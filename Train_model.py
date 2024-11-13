@@ -227,6 +227,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
         min_mse = float("inf")
         min_cross_entropy = float("inf")
         max_motsa = 0
+
         if epoch % 5 == 0:
             model.eval()
             val_mse_loss = 0.0
@@ -243,7 +244,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                     tracker = DeepSort(max_age=30, n_init=0, nn_budget=200)
                     bbox_seq = Track_image_sequence(entire_input_seq, YOLO_model, tracker, len(entire_input_seq))
 
-                    initial_guess_seq = [Construct_initial_guess(entire_input_seq[frame], bbox_seq, Image_depth(entire_input_seq[frame], depth_model, cam_int)) for frame in range(len(entire_input_seq))]
+                    initial_guess_seq = [Construct_initial_guess(entire_input_seq[frame], bbox_seq[frame], Image_depth(entire_input_seq[frame], depth_model, cam_int)) for frame in range(len(entire_input_seq))]
                     initial_guess_seq = np.transpose(np.array(initial_guess_seq), (0, 3, 1, 2))
                     class_seq = np.array(entire_class_seq)
                     class_seq = class_seq.astype(np.int16)
@@ -262,7 +263,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                             hidden[1] = hidden[1].detach()
                             hidden[2] = hidden[2].detach()
 
-                        pred_class_seq, pred_instance_seq, pred_depth_seq = model(initial_guess_mini, hidden)
+                        pred_class_seq, pred_instance_seq, pred_depth_seq, hidden = model(initial_guess_mini, hidden)
 
                         # Round pred_instance_seq to integer ids
                         pred_instance_seq = pred_instance_seq.detach().cpu().numpy()

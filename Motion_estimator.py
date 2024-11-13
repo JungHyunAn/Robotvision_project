@@ -144,7 +144,7 @@ def Construct_initial_guess(image : np.array, box_list, depth_map):
     sorted_keys = sorted(instance_depth, key=lambda k: instance_depth[k][0], reverse=True)
     for instance_id in sorted_keys:
         _, class_id, left_x, up_y, right_x, down_y = instance_depth[instance_id]
-        initial_guess[up_y:down_y+1, left_x:right_x+1, class_id+1] = class_id
+        initial_guess[up_y:down_y+1, left_x:right_x+1, class_id+1] = 1
         initial_guess[up_y:down_y+1, left_x:right_x+1, 4] = instance_id
   
     return initial_guess # (Gray, class_id as one hot, instance_id, depth)
