@@ -52,9 +52,10 @@ def Image_depth(image : np.array, depth_model, intrinsic):
     
   return depth_map
 
+
 def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequence_length=0):
     # Initialize list to hold detections and tracking results
-    box_list_sequence = []
+    box_list_sequence = [] # Output, array of frame_boxes
 
     # Determine the sequence length
     num_frames = sequence_length if sequence_length > 0 else len(image_sequence)
@@ -85,7 +86,7 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
             tracker.update_tracks(boxes, frame=img)
 
         # Update tracker only if there are detections in the frame
-        frame_boxes = []
+        frame_boxes = [] # bboxes for each frame
         if boxes:
             track_objects = tracker.update_tracks(boxes, frame=img)
 
@@ -103,8 +104,10 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
                 bbox = track.to_ltrb()
                 x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
 
+                cls = track.det_class
+
                 # Append [Class_ID, Instance_ID, left_x, up_y, right_x, down_y]
-                if cls in [2, 3, 5, 7]: # Assume as car if COCO label is 'car' or 'motorcycle' or 'bus' or 'truck'
+                if cls in [1, 2, 3, 5, 7]: # Assume as car if COCO label is 'car' or 'motorcycle' or 'bus' or 'truck'
                     frame_boxes.append([1, track_id, x1, y1, x2, y2])
                 elif cls in [0]: # Assume as pedestiran if COCO label is 'person'
                     frame_boxes.append([2, track_id, x1, y1, x2, y2])
@@ -119,6 +122,7 @@ def Track_image_sequence(image_sequence: np.ndarray, YOLO_model, tracker, sequen
 
 def Construct_initial_guess(image : np.array, box_list, depth_map):
     # box_list format: [[Class_ID, Instance_ID, left_x, up_y, right_x, down_y], ... for frame]
+    h,w = depth_map.shape
 
     # Expand depth_map to 3 dimensions to match image dimensions
     depth_map_expanded = depth_map[:, :, np.newaxis]  # Add a new axis for depth
@@ -142,12 +146,18 @@ def Construct_initial_guess(image : np.array, box_list, depth_map):
   
     # Sort instances by depth and assign class and instance IDs
     sorted_keys = sorted(instance_depth, key=lambda k: instance_depth[k][0], reverse=True)
+    initial_guess[:, :, 1] = 1 # Initialize by setting everything as background
     for instance_id in sorted_keys:
         _, class_id, left_x, up_y, right_x, down_y = instance_depth[instance_id]
-        initial_guess[up_y:down_y+1, left_x:right_x+1, class_id+1] = 1
+        down_y = min(down_y, h-1)
+        right_x = min(right_x, w-1)
+        if class_id != 0:
+            initial_guess[up_y:down_y+1, left_x:right_x+1, class_id+1] = 1
+            initial_guess[up_y:down_y+1, left_x:right_x+1, 1] = 0
         initial_guess[up_y:down_y+1, left_x:right_x+1, 4] = instance_id
   
     return initial_guess # (Gray, class_id as one hot, instance_id, depth)
+
 
 def calculate_iou(box1, box2):
     # Unpack the coordinates of each box
@@ -173,6 +183,7 @@ def calculate_iou(box1, box2):
     iou = inter_area / float(box1_area + box2_area - inter_area)
 
     return iou
+
 
 def Preprocess_gt(box_list, MOTS_gt_list):
     for frame in range(len(MOTS_gt_list)):
@@ -211,11 +222,11 @@ def GT2DetectID(Detect_list, Instance_gt_list):
     # Detect_list format: [[[Class_ID, Instance_ID, left_x, up_y, right_x, down_y] for every bounding box] for every frame]
     output_dict = {}
     iou_threshold = 0.2
-    picked_target = []
+    picked_target = [] # list of picked targets from bounding boxes
     
     for frame in range(len(Instance_gt_list)):
-        gt_masks = Instance_gt_list[frame]
-        detect_boxes = Detect_list[frame]
+        gt_masks = Instance_gt_list[frame] # masks for gt instance id at a frame
+        detect_boxes = Detect_list[frame] # b boxes for a frame
 
         # Track all mots_gt ids
         for g_id in gt_masks.keys():
@@ -242,12 +253,11 @@ def GT2DetectID(Detect_list, Instance_gt_list):
             if target_id is not None:
                 picked_target.append(target_id)
     
-    # Assign GT ids with None
-    target_candiate = list(set(output_dict.keys()) - set(picked_target))
-    i = 0
+    # Assign GT ids with None by remaining target_ids
+    i = max([v for v in output_dict.values() if v is not None]) + 1
     for g_id in output_dict.keys():
         if output_dict[g_id] is None:
-            output_dict[g_id] = target_candiate[i]
+            output_dict[g_id] = i
             i += 1
 
     # Output format : {GT_instance_id : Target id from DeepSORT}
@@ -260,9 +270,11 @@ def calculate_motsa(gt_instances, pred_instances, last_matches, iou_threshold=0.
     total_fp = 0
     total_ids = 0
     total_gt_instances = len(gt_instances)
-    total_pixels = list(gt_instances.values())[0].size  # Fixed values access
 
-    current_matches = {}
+    if total_gt_instances == 0:
+        return 0.0  # Avoid division by zero if no ground truth instances are present
+
+    current_matches = {} # GT/pred instance id for current frame
 
     # Matching ground truth instances to predicted instances using IoU
     def calculate_iou(mask1, mask2):
@@ -270,31 +282,25 @@ def calculate_motsa(gt_instances, pred_instances, last_matches, iou_threshold=0.
         union = np.logical_or(mask1, mask2).sum()
         return intersection / union if union > 0 else 0
 
-    for gt_id, gt_mask in gt_instances.items():
+    for pred_id, pred_mask in pred_instances.items():
         best_iou = 0
-        best_pred_id = None
-        for pred_id, pred_mask in pred_instances.items():
+        best_gt_id = None
+        for gt_id, gt_mask in gt_instances.items():
             iou = calculate_iou(gt_mask, pred_mask)
             if iou > iou_threshold and iou > best_iou:
                 best_iou = iou
-                best_pred_id = pred_id
+                best_gt_id = gt_id
 
-        if best_pred_id is not None:
-            current_matches[gt_id] = best_pred_id
+        if best_gt_id is not None:
+            current_matches[best_gt_id] = pred_id
             total_tp += 1
         else:
-            total_fp += 1
-
-    # False positives (predicted instances without corresponding GT instances)
-    matched_pred_ids = set(current_matches.values())
-    for pred_id in pred_instances:
-        if pred_id not in matched_pred_ids:
             total_fp += 1
 
     # Count ID switches
     for gt_id in current_matches:
         for frame_idx in range(len(last_matches) - 1, -1, -1):
-            if gt_id in last_matches[frame_idx]:
+            if gt_id in last_matches[frame_idx].keys():
                 if current_matches[gt_id] != last_matches[frame_idx][gt_id]:
                     total_ids += 1
                     break

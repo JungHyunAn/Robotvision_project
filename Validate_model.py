@@ -32,7 +32,7 @@ def val_model(model, YOLO_model, depth_model, val_root_list, device, max_size=30
 
             # Forward propagate
             tracker = DeepSort(max_age=30, n_init=0, nn_budget=200)
-            bbox_seq = Track_image_sequence(entire_input_seq, YOLO_model, tracker, len(entire_input_seq))
+            bbox_seq = Track_image_sequence(entire_input_seq, YOLO_model, tracker, len(entire_input_seq)) #List for bboxes for each frame
 
             initial_guess_seq = [Construct_initial_guess(entire_input_seq[frame], bbox_seq[frame], Image_depth(entire_input_seq[frame], depth_model, cam_int)) for frame in range(len(entire_input_seq))]
             initial_guess_seq = np.transpose(np.array(initial_guess_seq), (0, 3, 1, 2))
@@ -44,9 +44,9 @@ def val_model(model, YOLO_model, depth_model, val_root_list, device, max_size=30
             cross_entropy_loss = 0
             
             hidden = None
-            for idx in range(0, len(entire_input_seq), max_size):
-                ldx = min(idx+max_size, len(entire_input_seq))
-                initial_guess_mini = torch.from_numpy(initial_guess_seq[idx : ldx]).float().to(device)
+            for idx in range(0, len(entire_input_seq), max_size): # slice entire_input_seq by max_size=30
+                ldx = min(idx+max_size, len(entire_input_seq)) # last index of batch
+                initial_guess_mini = torch.from_numpy(initial_guess_seq[idx : ldx]).float().to(device) # slice precalculated initial_guess
 
                 if hidden is not None:
                     hidden[0] = hidden[0].detach()
@@ -60,36 +60,36 @@ def val_model(model, YOLO_model, depth_model, val_root_list, device, max_size=30
                 pred_instance_seq = np.rint(pred_instance_seq).astype(int)
 
                 # Transform pred_class_seq to maximum class id
-                pred_class_seq = torch.argmax(pred_class_seq, dim=3)
+                pred_class_seq = torch.argmax(pred_class_seq, dim=3) # pick the index with hightest value of class id
 
                 # Construct pred_instance_dict_seq as dictionary of masks for each frame & Match class Ids to instance id
                 pred_instance_dict_seq = []
                 pred_instance2class_seq = []
                 for frame_idx in range(len(pred_instance_seq)):
-                    pred_instance_dict = {}
-                    pred_instance2class = {}
-                    pred_class = pred_class_seq[frame_idx, :, :].detach().cpu().numpy()
+                    pred_instance_dict = {} # dict from instance id to mask
+                    pred_instance2class = {} # dict from instance id to class id
+                    pred_class = pred_class_seq[frame_idx, :, :].detach().cpu().numpy() # np.array of predicted class for a frame
                     pred_class_revised = np.zeros_like(pred_class)
-                    for instance_id in np.unique(pred_instance_seq[frame_idx, :, :]):
+                    for instance_id in np.unique(pred_instance_seq[frame_idx, :, :]): # Match a class for every predicted instance id -> revise the predicted class map
                         if instance_id == 0:
                             continue
                         pred_instance_dict[instance_id] = (pred_instance_seq[frame_idx, :, :] == instance_id).astype(int)
                         mask_flattened = np.multiply(pred_instance_dict[instance_id], pred_class).ravel()
-                        pred_instance2class[instance_id] = stats.mode(mask_flattened[np.nonzero(mask_flattened)])
-                        pred_class_revised += pred_instance2class[instance_id] * pred_instance_dict[instance_id]
+                        pred_instance2class[instance_id] = stats.mode(mask_flattened[np.nonzero(mask_flattened)]) # Find mode class id for instance mask
+                        pred_class_revised += pred_instance2class[instance_id] * pred_instance_dict[instance_id] # Add class id mask to revised pred class
                     pred_class_revised = torch.from_numpy(pred_class_revised).to(device=device, dtype=torch.long)
-                    pred_class_seq[frame_idx, :, :] = pred_class_revised
+                    pred_class_seq[frame_idx, :, :] = pred_class_revised # Change pred_class with revised pred_class for each frame
                     pred_instance_dict_seq.append(pred_instance_dict)
                     pred_instance2class_seq.append(pred_instance2class)
                 
 
                 # Compute validation losses
                 # MSE Loss for Depth Prediction
-                class_seq_mini = torch.from_numpy(class_seq[idx : ldx]).long().to(device)
+                class_seq_mini = torch.from_numpy(class_seq[idx : ldx]).long().to(device) # Slice gt class_seq by index / shape of (<=30, 375, 1242)
                 class_seq_mini = F.one_hot(class_seq_mini, num_classes=3).float()
-                class_seq_mini = class_seq_mini.to(device)
+                class_seq_mini = class_seq_mini.to(device) # Sliced gt class_seq&one hot encoded / shape of (<=30, 375, 1242, 3)
 
-                pred_class_seq = F.one_hot(pred_class_seq, num_classes=3).float()
+                pred_class_seq = F.one_hot(pred_class_seq, num_classes=3).float() # Convert pred_class_seq back to one-hot
 
                 depth_seq_mini = torch.from_numpy(depth_seq[idx : ldx]).float().to(device)
 

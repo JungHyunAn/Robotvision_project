@@ -48,12 +48,14 @@ def produce_entire_sequence(raw_root, mots_root, depth_root, s_idx, l_idx):
         MOTS_map = np.array(Image.open(MOTS_path))
 
         class_map = MOTS_map // 1000
-        class_map[class_map == 10] = 0
+        class_map[class_map == 10] = 0 # set unknown as background
         entire_class_seq.append(class_map)
 
         instance_map = MOTS_map % 1000
         instance_dict = {}
         for instance_id in np.unique(instance_map):
+            if instance_id == 0: # do not track background
+                continue
             instance_dict[instance_id] = (instance_map == instance_id).astype(int)
         entire_instance_seq.append(instance_dict)
 
@@ -129,6 +131,8 @@ def produce_batch_sequence(batched_input_root, batched_MOTS_root, batched_depth_
         instance_map = MOTS_map % 1000
         instance_dict = {}
         for instance_id in np.unique(instance_map):
+            if instance_id == 0: # do not track background
+                continue
             instance_dict[instance_id] = (instance_map == instance_id).astype(int)
         batched_instance_seq.append(instance_dict)
 
@@ -139,9 +143,11 @@ def produce_batch_sequence(batched_input_root, batched_MOTS_root, batched_depth_
     return batched_input_seq, batched_class_seq, batched_instance_seq, batched_depth_seq
 
 
-def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root_list, val_root_list, n_epochs, device, max_size=30):
+def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root_list, val_root_list, n_epochs, device, max_size=30, pre_trained_path = None):
     # train/val_root_list = [[raw_root, mots_root, depth_root, start_index, last_index, camera_intrinsic], ...]
-    
+    if pre_trained_path is not None:
+        model.load_state_dict(torch.load(pre_trained_path))
+
     model.train()
     model.to(device)
 
@@ -155,30 +161,30 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
             
             # Divide video sequence into batches of different length
             for batch in range(len(batched_input_root_seq)):
-                batched_input_root = batched_input_root_seq[batch]
+                batched_input_root = batched_input_root_seq[batch] # List of input roots for batch
                 batched_MOTS_root = batched_MOTS_root_seq[batch]
                 batched_depth_root = batched_depth_root_seq[batch]
 
                 total_frames += len(batched_input_root_seq[batch])
                 
-                # Load images for batch / List of np.arrays
+                # Load images for entire batch / List of np.arrays
                 input_seq, class_seq, instance_seq, depth_seq = produce_batch_sequence(batched_input_root, batched_MOTS_root, batched_depth_root)
 
                 # Run DeepSORT tracking
                 tracker = DeepSort(max_age=30, n_init=0, nn_budget=200)
-                bbox_seq = Track_image_sequence(input_seq, YOLO_model, tracker, len(batched_input_root))
+                bbox_seq = Track_image_sequence(input_seq, YOLO_model, tracker, len(batched_input_root)) # Bounding boxes for entire batch
 
                 # Construct Initial Guess Sequence
-                initial_guess_seq = []
+                initial_guess_seq = [] # Initial guess list for entire batch
                 for frame in range(len(batched_input_root)):
                     depth_map = Image_depth(input_seq[frame], depth_model, cam_int)
                     initial_guess_seq.append(Construct_initial_guess(input_seq[frame], bbox_seq[frame], depth_map))
 
                 # Construct dict between GT instance ID and bbox instance ID / Modify instance_seq
                 GT2bbox_instance_dict = GT2DetectID(bbox_seq, instance_seq)
-                instance_seq = [{GT2bbox_instance_dict.get(k, k): v for k, v in instance_dict.items()} for instance_dict in instance_seq]
+                instance_seq = [{GT2bbox_instance_dict.get(k, k): v for k, v in instance_dict.items()} for instance_dict in instance_seq] # Dict from reassigned instance id to masks
                 
-                # Convert types of gt
+                # Convert data types of gt
                 initial_guess_seq = np.transpose(np.array(initial_guess_seq), (0, 3, 1, 2))
                 class_seq = np.array(class_seq)
                 class_seq = class_seq.astype(np.int16)
@@ -202,6 +208,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                     pred_class_mini, pred_instance_mini, pred_depth_mini, hidden = model(initial_guess_mini, hidden)
 
                     # Compute loss in mini_batch
+                    # Convert minibatch class gt sequence to one hot
                     class_mini = torch.from_numpy(class_seq[idx : ldx, :, :]).long().to(device)
                     class_mini = F.one_hot(class_mini, num_classes=3).float()
                     class_mini = class_mini.to(device)
@@ -228,8 +235,9 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
         min_cross_entropy = float("inf")
         max_motsa = 0
 
-        if epoch % 5 == 0:
+        if epoch % 3 == 0:
             model.eval()
+            model.to(device)
             val_mse_loss = 0.0
             val_cross_entropy_loss = 0.0
             total_motsa = 0.0
@@ -242,7 +250,7 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
 
                     # Forward propagate
                     tracker = DeepSort(max_age=30, n_init=0, nn_budget=200)
-                    bbox_seq = Track_image_sequence(entire_input_seq, YOLO_model, tracker, len(entire_input_seq))
+                    bbox_seq = Track_image_sequence(entire_input_seq, YOLO_model, tracker, len(entire_input_seq)) #List for bboxes for each frame
 
                     initial_guess_seq = [Construct_initial_guess(entire_input_seq[frame], bbox_seq[frame], Image_depth(entire_input_seq[frame], depth_model, cam_int)) for frame in range(len(entire_input_seq))]
                     initial_guess_seq = np.transpose(np.array(initial_guess_seq), (0, 3, 1, 2))
@@ -254,9 +262,9 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                     cross_entropy_loss = 0
                     
                     hidden = None
-                    for idx in range(0, len(entire_input_seq), max_size):
-                        ldx = min(idx+max_size, len(entire_input_seq))
-                        initial_guess_mini = torch.from_numpy(initial_guess_seq[idx : ldx]).float().to(device)
+                    for idx in range(0, len(entire_input_seq), max_size): # slice entire_input_seq by max_size=30
+                        ldx = min(idx+max_size, len(entire_input_seq)) # last index of batch
+                        initial_guess_mini = torch.from_numpy(initial_guess_seq[idx : ldx]).float().to(device) # slice precalculated initial_guess
 
                         if hidden is not None:
                             hidden[0] = hidden[0].detach()
@@ -270,49 +278,55 @@ def train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root
                         pred_instance_seq = np.rint(pred_instance_seq).astype(int)
 
                         # Transform pred_class_seq to maximum class id
-                        pred_class_seq = torch.argmax(pred_class_seq, dim=3)
+                        pred_class_seq = torch.argmax(pred_class_seq, dim=3) # pick the index with hightest value of class id
 
                         # Construct pred_instance_dict_seq as dictionary of masks for each frame & Match class Ids to instance id
                         pred_instance_dict_seq = []
                         pred_instance2class_seq = []
-                        for frame_idx in range(len(entire_instance_seq)):
-                            pred_instance_dict = {}
-                            pred_instance2class = {}
-                            pred_class = pred_class_seq[frame_idx, :, :].detach().cpu().numpy()
+                        for frame_idx in range(len(pred_instance_seq)):
+                            pred_instance_dict = {} # dict from instance id to mask
+                            pred_instance2class = {} # dict from instance id to class id
+                            pred_class = pred_class_seq[frame_idx, :, :].detach().cpu().numpy() # np.array of predicted class for a frame
                             pred_class_revised = np.zeros_like(pred_class)
-                            for instance_id in np.unique(entire_instance_seq[frame_idx, :, :]):
-                                pred_instance_dict[instance_id] = (entire_instance_seq[frame_idx, :, :] == instance_id).astype(int)
-                                pred_instance2class[instance_id] = stats.mode(np.multiply(pred_instance_dict[instance_id], pred_class))
-                                pred_class_revised += pred_instance2class[instance_id] * pred_instance_dict[instance_id]
-                            pred_class_seq[frame_idx, :, :] = pred_class_revised
+                            for instance_id in np.unique(pred_instance_seq[frame_idx, :, :]): # Match a class for every predicted instance id -> revise the predicted class map
+                                if instance_id == 0:
+                                    continue
+                                pred_instance_dict[instance_id] = (pred_instance_seq[frame_idx, :, :] == instance_id).astype(int)
+                                mask_flattened = np.multiply(pred_instance_dict[instance_id], pred_class).ravel()
+                                pred_instance2class[instance_id] = stats.mode(mask_flattened[np.nonzero(mask_flattened)]) # Find mode class id for instance mask
+                                pred_class_revised += pred_instance2class[instance_id] * pred_instance_dict[instance_id] # Add class id mask to revised pred class
+                            pred_class_revised = torch.from_numpy(pred_class_revised).to(device=device, dtype=torch.long)
+                            pred_class_seq[frame_idx, :, :] = pred_class_revised # Change pred_class with revised pred_class for each frame
                             pred_instance_dict_seq.append(pred_instance_dict)
                             pred_instance2class_seq.append(pred_instance2class)
                         
 
                         # Compute validation losses
                         # MSE Loss for Depth Prediction
-                        class_seq_mini = torch.from_numpy(class_seq[idx : ldx]).long().to(device)
+                        class_seq_mini = torch.from_numpy(class_seq[idx : ldx]).long().to(device) # Slice gt class_seq by index / shape of (<=30, 375, 1242)
                         class_seq_mini = F.one_hot(class_seq_mini, num_classes=3).float()
-                        class_seq_mini = class_seq_mini.to(device)
-        
+                        class_seq_mini = class_seq_mini.to(device) # Sliced gt class_seq&one hot encoded / shape of (<=30, 375, 1242, 3)
+
+                        pred_class_seq = F.one_hot(pred_class_seq, num_classes=3).float() # Convert pred_class_seq back to one-hot
+
                         depth_seq_mini = torch.from_numpy(depth_seq[idx : ldx]).float().to(device)
 
-                        mse_loss += F.mse_loss(pred_depth_seq, depth_seq_mini)
+                        mse_loss += F.mse_loss(pred_depth_seq, depth_seq_mini).item()
 
                         # Cross-Entropy Loss for Class Prediction
-                        cross_entropy_loss += F.cross_entropy(pred_class_seq, class_seq)
+                        cross_entropy_loss += F.cross_entropy(pred_class_seq, class_seq_mini).item()
 
                         # Calculate MOTSA for Instance Prediction
                         for frame_idx in range(len(pred_instance_seq)):
                             gt_instances = entire_instance_seq[frame_idx]
-                            pred_instances = pred_instance_seq[frame_idx]
+                            pred_instances = pred_instance_dict_seq[frame_idx]
                             last_matches = []
                             motsa = calculate_motsa(gt_instances, pred_instances, last_matches)  # Custom function to calculate MOTSA for the frame
                             total_motsa += motsa
                             total_frames += 1
                 
-                val_mse_loss += mse_loss.item()
-                val_cross_entropy_loss += cross_entropy_loss.item()
+                val_mse_loss += mse_loss
+                val_cross_entropy_loss += cross_entropy_loss
 
             # Average the losses and MOTSA score
             avg_mse_loss = val_mse_loss / len(val_root_list)
