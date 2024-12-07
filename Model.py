@@ -142,62 +142,123 @@ class ConvGRU(nn.Module):
 class PreprocessingCNN(nn.Module):
     def __init__(self, input_channels, output_channels):
         super(PreprocessingCNN, self).__init__()
-        self.conv1 = nn.Conv2d(input_channels, 8, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(8, 8, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1)
         self.maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)  # Downsample by 2
-        self.conv3 = nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1)
         self.maxpool2 = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)  # Downsample by 2
-        self.conv5 = nn.Conv2d(16, output_channels, kernel_size=3, stride=1, padding=1)
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.conv6 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1)
+        self.maxpool3 = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)  # Downsample by 2
+        self.conv7 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
+        self.maxpool4 = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)  # Downsample by 2
+        self.conv8 = nn.Conv2d(256, output_channels, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        size2 = x.size()
-        x, indice2 = self.maxpool1(x)
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        size1 = x.size()
-        x, indice1 = self.maxpool2(x)
-        x = F.relu(self.conv5(x))
-        return x, indice1, indice2, size1, size2
-    
+        x1 = F.relu(self.conv1(x))
+        x1 = F.relu(self.conv2(x1))
+        size1 = x1.size()
+        x2, indice1 = self.maxpool1(x1)
+
+        x2 = F.relu(self.conv3(x2))
+        x2 = F.relu(self.conv4(x2))
+        size2 = x2.size()
+        x3, indice2 = self.maxpool2(x2)
+
+        x3 = F.relu(self.conv5(x3))
+        x3 = F.relu(self.conv6(x3))
+        size3 = x3.size()
+        x, indice3 = self.maxpool3(x3)
+
+        x = F.relu(self.conv7(x))
+        size4 = x.size()
+        x, indice4 = self.maxpool4(x)
+
+        x = F.relu(self.conv8(x))
+
+        return x, x1, x2, x3, indice1, size1, indice2, size2, indice3, size3, indice4, size4
+
 
 class PostprocessingCNN(nn.Module):
     def __init__(self, input_channels):
         super(PostprocessingCNN, self).__init__()
-        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(input_channels, 256, kernel_size=3, stride=1, padding=1)
         self.maxunpool1 = nn.MaxUnpool2d(kernel_size=2, stride=2)  # Upsample by 2
-        self.conv3 = nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(16, 8, kernel_size=3, stride=1, padding=1)
-        self.maxunpool2 = nn.MaxUnpool2d(kernel_size=2, stride=2)  # Upsample by 2
-        self.conv_class = nn.Conv2d(8, 3, kernel_size=1)
-        self.conv_instance = nn.Conv2d(8, 1, kernel_size=1)
-        self.conv_depth = nn.Conv2d(8, 1, kernel_size=1)
+        self.conv2 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
+        self.maxunpool2 = nn.MaxUnpool2d(kernel_size=2, stride=2)
+        self.conv3 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1)
+        self.maxunpool3 = nn.MaxUnpool2d(kernel_size=2, stride=2)
+        self.conv5 = nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1)
+        self.conv6 = nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1)
+        self.maxunpool4 = nn.MaxUnpool2d(kernel_size=2, stride=2)
+        self.conv7 = nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, x, indices1, indices2, size1, size2):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = self.maxunpool1(x, indices1, output_size=size1)
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = self.maxunpool2(x, indices2, output_size=size2)
+        self.conv8 = nn.Conv2d(input_channels, 256, kernel_size=3, stride=1, padding=1)
+        self.maxunpool5 = nn.MaxUnpool2d(kernel_size=2, stride=2)  # Upsample by 2
+        self.conv9 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
+        self.maxunpool6 = nn.MaxUnpool2d(kernel_size=2, stride=2)
+        self.conv10 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
+        self.conv11 = nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1)
+        self.maxunpool7 = nn.MaxUnpool2d(kernel_size=2, stride=2)
+        self.conv12 = nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1)
+        self.conv13 = nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1)
+        self.maxunpool8 = nn.MaxUnpool2d(kernel_size=2, stride=2)
+        self.conv14 = nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1)
 
-        class_map = self.conv_class(x)
-        class_map = class_map.permute(0, 2, 3, 1)
+        self.conv_instance = nn.Conv2d(32, 11, kernel_size=1)
+        self.conv_depth = nn.Conv2d(32, 1, kernel_size=1)
 
-        instance_map = self.conv_instance(x)
-        instance_map = torch.squeeze(instance_map, dim=1)
+    def forward(self, x, x1, x2, x3, indice1, size1, indice2, size2, indice3, size3, indice4, size4):
+        x_inst = F.relu(self.conv1(x)) # (256, h/16, w/16)
+        x_inst = self.maxunpool1(x_inst, indice1, output_size=size1)
+        
+        x_inst = F.relu(self.conv2(x_inst)) # (128, h/8, w/8)
+        x_inst = self.maxunpool2(x_inst, indice2, output_size=size2)
 
-        depth_map = self.conv_depth(x)
-        depth_map = torch.squeeze(depth_map, dim=1)
+        x_inst = torch.cat((x_inst, x1), 1) # (256, h/4, w/4)
+        x_inst = F.relu(self.conv3(x_inst)) # (128, h/4, w/4)
+        x_inst = F.relu(self.conv4(x_inst)) # (64, h/4, w/4)
+        x_inst = self.maxunpool3(x_inst, indice3, output_size=size3)
 
-        return class_map, instance_map, depth_map
+        x_inst = torch.cat((x_inst, x2), 1) # (128, h/2, w/2)
+        x_inst = F.relu(self.conv5(x_inst)) # (64, h/2, w/2)
+        x_inst = F.relu(self.conv6(x_inst)) # (32, h/2, w/2)
+        x_inst = self.maxunpool4(x_inst, indice4, output_size=size4)
+
+        x_inst = torch.cat((x_inst, x3), 1) # (64, h, w)
+        x_inst = F.relu(self.conv7(x_inst)) # (32, h, w)
+        instance_map = self.conv_instance(x_inst) # (11, h, w)
+        #instance_map = instance_map.permute(0, 2, 3, 1)
+
+        x_depth = F.relu(self.conv8(x)) # (256, h/16, w/16)
+        x_depth = self.maxunpool5(x_depth, indice1, output_size=size1)
+        
+        x_depth = F.relu(self.conv9(x_depth)) # (128, h/8, w/8)
+        x_depth = self.maxunpool6(x_depth, indice2, output_size=size2)
+
+        x_depth = torch.cat((x_depth, x1), 1) # (256, h/4, w/4)
+        x_depth = F.relu(self.conv10(x_depth)) # (128, h/4, w/4)
+        x_depth = F.relu(self.conv11(x_depth)) # (64, h/4, w/4)
+        x_depth = self.maxunpool7(x_depth, indice3, output_size=size3)
+
+        x_depth = torch.cat((x_depth, x2), 1) # (128, h/2, w/2)
+        x_depth = F.relu(self.conv12(x_depth)) # (64, h/2, w/2)
+        x_depth = F.relu(self.conv13(x_depth)) # (32, h/2, w/2)
+        x_depth = self.maxunpool8(x_depth, indice4, output_size=size4)
+
+        x_depth = torch.cat((x_depth, x3), 1) # (64, h, w)
+        x_depth = F.relu(self.conv14(x_depth)) # (32, h, w)
+
+        depth_map = self.conv_depth(x_depth)
+        depth_map = torch.squeeze(depth_map, dim=1) # (h, w)
+
+        return instance_map, depth_map
 
 
 class Pred_model(nn.Module):
-    def __init__(self, input_channels=6, hidden_size=32, GRU_kernel=5, GRU_layers=3):
+    def __init__(self, input_channels=13, hidden_size=256, GRU_kernel=3, GRU_layers=1):
         super(Pred_model, self).__init__()
         self.preCNN = PreprocessingCNN(input_channels, hidden_size)
         self.GRU = ConvGRU(hidden_size, hidden_size, GRU_kernel, GRU_layers)
@@ -210,14 +271,13 @@ class Pred_model(nn.Module):
         hidden : Final hidden state for CGRU
 
         Output:
-        class_seq : 4D class ID output tensor with shape (time, height, width, class ID channel=3)
-        instance_seq : 3D class ID output tensor with shape (time, height, width)
+        instance_seq : 4D class ID output tensor with shape (time, height, width, instanceID channel)
         depth_seq : 3D class ID output tensor with shape (time, height, width)
         '''
-        x, indices1, indices2, size1, size2 = self.preCNN(x)
+        x, x1, x2, x3, indice1, size1, indice2, size2, indice3, size3, indice4, size4 = self.preCNN(x)
         x, hidden = self.GRU(x, hidden)
-        class_seq, instance_seq, depth_seq = self.postCNN(x, indices1, indices2, size1, size2)
-        return class_seq, instance_seq, depth_seq, hidden
+        instance_seq, depth_seq = self.postCNN(x, x3, x2, x1, indice4, size4, indice3, size3, indice2, size2, indice1, size1)
+        return instance_seq, depth_seq, hidden
 
 
 class CombinedLoss(nn.Module):
@@ -226,33 +286,94 @@ class CombinedLoss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.cross_entropy_loss = nn.CrossEntropyLoss()
 
-    def forward(self, class_pred, class_gt, instance_pred, instance_gt, depth_pred, depth_gt):
+    def dice_loss(self, pred, target, smooth=1e-6):
+        """
+        Dice Loss for multiple labels without using one-hot encoding.
+        Arguments:
+            pred: Tensor of shape (batch, num_classes, height, width), containing the predicted softmax scores for each class.
+            target: Tensor of shape (batch, num_classes, height, width), containing the ground truth labels for each pixel as integer values.
+            smooth: A small value to avoid division by zero.
+        Returns:
+            Dice loss value averaged across all classes.
+        """
+        # Apply softmax to the predictions to get probabilities
+        pred_softmax = F.softmax(pred, dim=1)  # Shape: (batch, num_classes, height, width)
+
+        # Create a mask for each class by comparing the target to each class index
+        # For each class, target_mask has the shape (batch, height, width) and values are either 0 or 1
+        batch_size, num_classes, height, width = pred.shape
+
+        # Initialize variables for calculating the Dice loss for each class
+        dice_loss_total = 0.0
+
+        # Loop through each class and calculate the Dice loss
+        for class_idx in range(num_classes):
+            # Create a binary mask for the current class in the target
+            target_mask = target[:, class_idx, :, :]  # Shape: (batch, height, width)
+
+            # Extract the prediction for the current class
+            pred_class = pred_softmax[:, class_idx, :, :]  # Shape: (batch, height, width)
+
+            # Compute the intersection and union for the current class
+            intersection = (pred_class * target_mask).sum(dim=(1, 2))
+            pred_sum = pred_class.sum(dim=(1, 2))
+            target_sum = target_mask.sum(dim=(1, 2))
+
+            # Compute Dice coefficient for the current class and average over the batch
+            dice = (2. * intersection + smooth) / (pred_sum + target_sum + smooth)
+            dice_loss_total += (1 - dice).mean()
+
+        # Average Dice loss across all classes
+        dice_loss_avg = dice_loss_total / num_classes
+
+        return dice_loss_avg
+
+    def forward(self, instance_pred, instance_gt, depth_pred, depth_gt, depth_metric3d, device):
         # Cross entropy loss expects class_pred to have raw logits and class_gt to have integer class labels
         # Make sure class_gt is of shape (batch, height, width) with integer values representing class labels
-        assert class_pred.shape == class_gt.shape
-        assert instance_pred.shape == instance_gt.shape
+        assert instance_pred.shape == instance_gt.shape, f'instances has shape of {instance_pred.shape}, {instance_gt.shape}'
         assert depth_pred.shape == depth_gt.shape
-        assert class_pred.dim() == 4, f'class_pred has shape of {class_pred.shape}'
-        assert instance_pred.dim() == 3, f'instance_pred has shape of {instance_pred.shape}'
+        assert instance_pred.dim() == 4, f'instance_pred has shape of {instance_pred.shape}'
         assert depth_pred.dim() == 3, f'depth_pred has shape of {depth_pred.shape}'
 
-        class_loss = self.cross_entropy_loss(class_pred, class_gt)
+        batch_size, num_classes, height, width = instance_pred.shape
 
-        # MSE loss for instance and depth predictions
-        instance_loss = self.mse_loss(instance_pred, instance_gt)
+        # Flatten ground truth to calculate pixel count per class
+        instance_gt_flat = torch.argmax(instance_gt, dim=1).view(-1).long()
+        class_counts = torch.bincount(instance_gt_flat, minlength=num_classes)
+
+        class_weights = []
+        for i in range(num_classes):
+            if i == 0:
+                class_weights.append(1)
+            elif class_counts[i] == 0:
+                class_weights.append(1)
+            else:
+                class_weights.append(float((class_counts[0]/class_counts[i]).item()))
+
+        class_weights = torch.from_numpy(np.array(class_weights)).to(device)
+        # Create the CrossEntropyLoss with weights
+        cross_entropy_loss = nn.CrossEntropyLoss(weight=class_weights, reduction='mean')
+        instance_loss_ce = cross_entropy_loss(instance_pred, instance_gt)
+        intance_loss_dice = self.dice_loss(instance_pred, instance_gt)
+        instance_loss = 0.5*instance_loss_ce + 50*intance_loss_dice
+
         # Mask the depth predictions and ground truth based on the condition depth_gt > 1e-8
         mask = depth_gt > 1e-8
         depth_pred_masked = depth_pred[mask]
         depth_gt_masked = depth_gt[mask]
 
+        mask_comp = depth_gt <= 1e-8
+        depth_pred_masked_comp = depth_pred[mask_comp]
+        depth_metric3d_masked_comp = depth_metric3d[mask_comp]
         # Calculate MSE loss only for the masked values
         if depth_gt_masked.numel() > 0:  # Check if there are valid elements to avoid division by zero
-            depth_loss = self.mse_loss(depth_pred_masked, depth_gt_masked)
+            depth_loss = self.mse_loss(depth_pred_masked, depth_gt_masked) + 0.2*self.mse_loss(depth_pred_masked_comp, depth_metric3d_masked_comp)
         else:
             depth_loss = torch.tensor(0.0, device=depth_gt.device)
 
-        
         # Total combined loss with weights for different components
-        total_loss = 15 * class_loss + 15 * instance_loss + depth_loss
-        
+        total_loss = 50*instance_loss + depth_loss
+        print(instance_loss_ce.item(), intance_loss_dice.item(), depth_loss.item(), total_loss.item())
+
         return total_loss

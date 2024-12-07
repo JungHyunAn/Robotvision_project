@@ -52,4 +52,4 @@ optimizer = optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), weight_
 
 
 # Train model
-train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root_list, val_root_list, 100, device)
+train_model(model, YOLO_model, depth_model, criterion, optimizer, train_root_list, val_root_list, 100, device, max_size=5, pre_trained_path='models\\revised9_model_epoch_7.pth')

@@ -896,3 +896,8 @@ DEMO/Sequence_demo/0001_rgb_initial_guess/000445.png
 data_tracking_image_2/
 data_depth_annotated/
 MOTS_instances/
+DEMO/Prediction_demo.py
+DEMO/Prediction_val_demo/
+DEMO/Prediction_evaluation_demo/
+DEMO/Combined_sequence_demo/
+DEMO/MOTS_sequence_demo/
